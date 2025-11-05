@@ -13,11 +13,12 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import ThemeToggle from "./ThemeToggle";
 import { Avatar, AvatarFallback } from "./ui/avatar";
+import { RoomUser } from "@/pages/Index";
 
 interface RoomViewProps {
   roomName: string;
   username: string;
-  participants: string[];
+  participants: RoomUser[];
   onLeave: () => void;
 }
 
@@ -104,7 +105,7 @@ const RoomView = ({
 
       {/* Video Grid */}
       <main className="flex-1 container mx-auto px-6 sm:px-8 lg:px-12 py-10 overflow-auto no-scrollbar">
-        <div className={`grid ${getGridCols(participants.length)} gap-4`}>
+        <div className={`grid ${getGridCols(participants.length)} gap-8`}>
           {/* Current User Video */}
           <Card className="aspect-video bg-gradient-card relative overflow-hidden group shadow-medium animate-fade-in border-2 border-primary/20">
             {!isVideo && (
@@ -166,10 +167,10 @@ const RoomView = ({
           </Card>
 
           {participants
-            .filter((p) => p !== username)
-            .map((participant, index) => (
+            .filter((p) => p.username !== username)
+            .map((p, index) => (
               <Card
-                key={participant}
+                key={p.id}
                 className="aspect-video bg-gradient-card relative overflow-hidden group shadow-medium animate-fade-in hover:shadow-lg transition-all duration-300 hover:border-primary/30"
                 style={{ animationDelay: `${(index + 1) * 0.1}s` }}
               >
@@ -177,11 +178,11 @@ const RoomView = ({
                   <div className="text-center flex flex-col gap-2">
                     <Avatar className="w-20 h-20 mx-auto shadow-soft">
                       <AvatarFallback className="bg-primary/20 text-primary text-2xl font-bold">
-                        {participant.charAt(0).toUpperCase()}
+                        {p.username.charAt(0).toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
                     <p className="font-semibold text-foreground">
-                      {participant}
+                      {p.username}
                     </p>
                   </div>
                 </div>

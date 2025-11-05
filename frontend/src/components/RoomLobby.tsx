@@ -151,7 +151,9 @@ const RoomLobby = ({
         ) : (
           <div className="flex-1 h-full w-full flex flex-col justify-center items-center gap-8 mx-auto">
             <div className="w-full flex flex-col gap-1 text-center">
-              <h3 className="text-2xl md:text-3xl font-bold">No active rooms</h3>
+              <h3 className="text-2xl md:text-3xl font-bold">
+                No active rooms
+              </h3>
               <p className="text-muted-foreground text-base md:text-lg">
                 Be the first to create a room and start chatting with others
               </p>
@@ -159,7 +161,7 @@ const RoomLobby = ({
             <Button
               onClick={() => setCreateDialogOpen(true)}
               size="lg"
-              className="flex flex-row items-center gap-4 bg-gradient-primary hover:opacity-90 transition-all duration-300 shadow-medium hover:shadow-lg text-base font-semibold px-6 py-3 h-fit"
+              className="flex flex-row items-center gap-3 bg-gradient-primary hover:opacity-90 transition-all duration-300 shadow-medium hover:shadow-lg text-base px-4 py-3 h-fit"
             >
               <Plus className="w-6 h-6" />
               Create First Room

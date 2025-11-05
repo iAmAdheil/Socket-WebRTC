@@ -12,15 +12,25 @@ export interface Room {
   activeUsers: string[];
 }
 
+export interface RoomUser {
+  id: string;
+  username: string;
+}
+
+const config = {
+  iceServers: [
+    { urls: "stun:stun.l.google.com:19302" }, // free Google STUN server
+  ],
+};
+
 const Index = () => {
   const [appState, setAppState] = useState<AppState>("username");
   const [username, setUsername] = useState("");
   const [currentRoomName, setCurrentRoomName] = useState("");
   const [rooms, setRooms] = useState<Room[]>([]);
+  const [roomUsers, setRoomUsers] = useState<RoomUser[]>([]);
 
   const socketRef = useRef<Socket>(null);
-
-  const mockParticipants = ["Alice", "Alice", "Alice"];
 
   useEffect(() => {
     const startListening = () => {
@@ -32,26 +42,35 @@ const Index = () => {
       });
 
       socketRef.current?.on("fetch active rooms", (roomsStr) => {
-        if (appState === "lobby") {
-          const rooms = JSON.parse(roomsStr) as Room[];
-          console.log(rooms);
-          setRooms(rooms);
-        }
+        const rooms = JSON.parse(roomsStr) as Room[];
+        setRooms(rooms);
+      });
+
+      socketRef.current?.on("fetch room users", (usersStr) => {
+        const users = JSON.parse(usersStr) as RoomUser[];
+        setRoomUsers(users);
+      });
+
+      socketRef.current?.on("add new room user", (userStr) => {
+        const user = JSON.parse(userStr) as RoomUser;
+        setRoomUsers((prev) => [...prev, user]);
       });
     };
 
-    if (appState === "username") {
+    if (appState === "username" && socketRef.current !== null) {
       socketRef.current?.disconnect();
       socketRef.current = null;
-    } else {
+    } else if (socketRef.current === null && appState !== "username") {
       startListening();
     }
+  }, [appState, username]);
 
+  useEffect(() => {
     return () => {
       socketRef.current?.disconnect();
       socketRef.current = null;
     };
-  }, [appState, username]);
+  }, []);
 
   const handleUsernameSubmit = (name: string) => {
     setUsername(name);
@@ -96,7 +115,7 @@ const Index = () => {
         <RoomView
           roomName="General Discussion"
           username={username}
-          participants={[username, ...mockParticipants]}
+          participants={roomUsers}
           onLeave={handleLeaveRoom}
         />
       )}

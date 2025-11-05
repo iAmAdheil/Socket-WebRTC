@@ -51,20 +51,40 @@ app.get('/', (req, res) => {
 });
 
 io.of("/").on("connection", async (socket) => {
-  console.log(socket.handshake.auth.username, "joined!");
-
   const rooms = await getAllRooms();
   socket.emit("fetch active rooms", JSON.stringify(rooms));
 
   socket.on("join room", async (roomName: string) => {
-    socket.join(roomName);
+    await socket.join(roomName);
     const rooms = await getAllRooms();
-
     io.except(roomName).emit("fetch active rooms", JSON.stringify(rooms));
 
-    const clients = [...(io.sockets.adapter.rooms.get(roomName) || [])];
-    console.log(clients);
-    // socket.emit("room-users", clients);
+    io.to(roomName).except(socket.id).emit("add new room user", JSON.stringify({
+      id: socket.id,
+      username: socket.handshake.auth.username,
+    }));
+
+    const clientIDs = io.sockets.adapter.rooms.get(roomName) || new Set();
+    // 2. Prepare an array to hold the client details (ID and Username)
+    const clientsWithUsernames = [];
+    // 3. Iterate over the client IDs to find the corresponding socket and its handshake data
+    for (const clientID of clientIDs) {
+      // Get the actual Socket object for the client ID
+      const s = io.sockets.sockets.get(clientID);
+
+      if (s) {
+        // Access the username from the handshake.auth object
+        // Assuming the client sends { auth: { username: '...' } }
+        const username = s.handshake.auth.username;
+
+        clientsWithUsernames.push({
+          id: clientID,
+          username: username,
+        });
+      }
+    }
+    console.log(clientsWithUsernames);
+    io.to(roomName).emit("fetch room users", JSON.stringify(clientsWithUsernames));
   });
 
   socket.on("leave room", async (roomName: string) => {
@@ -76,7 +96,6 @@ io.of("/").on("connection", async (socket) => {
   socket.on("disconnect", async () => {
     const rooms = await getAllRooms();
     io.emit("fetch active rooms", JSON.stringify(rooms));
-    console.log("User disconnected:", socket.handshake.auth.username);
   });
 });
 
