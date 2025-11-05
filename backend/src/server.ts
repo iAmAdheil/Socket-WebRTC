@@ -7,42 +7,64 @@ const app = express();
 const server = createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: "http://localhost:5173",
+    origin: "http://localhost:8080",
     methods: ["GET", "POST"]
   }
 });
 
-io.on('connection', (socket) => {
-  console.log('a new user connected');
-  io.emit('new connection', 'a user connected')
-  socket.on('disconnect', () => {
-    socket.broadcast.emit('user disconnected', 'a user disconnected')
-  });
-  socket.on('chat message', (msg) => {
-    socket.broadcast.emit('chat message', msg);
+export interface Room {
+  id: string;
+  name: string;
+  activeUsers: string[];
+}
+
+async function getAllRooms(): Promise<Room[]> {
+  const rooms: Room[] = [];
+  const allRooms = io.of("/").adapter.rooms;
+
+  for (const [roomName, socketIds] of allRooms) {
+    // Filter out socket's own rooms (each socket has a room with its ID)
+    if (!io.of("/").sockets.has(roomName)) {
+      // Get actual socket instances to extract user data
+      const sockets = await io.in(roomName).fetchSockets();
+
+      const activeUsers = sockets.map(socket =>
+        socket.data.username || socket.data.userId || socket.id
+      );
+
+      rooms.push({
+        id: roomName,
+        name: roomName, // or extract from roomName if it's like "project:123"
+        activeUsers: activeUsers
+      });
+    }
+  }
+
+  return rooms;
+}
+
+
+app.get('/', (req, res) => {
+  res.json({
+    msg: "Hello World"
+  })
+});
+
+io.of("/").on("connection", async (socket) => {
+  const rooms = await getAllRooms();
+  socket.emit("fetch active rooms", JSON.stringify(rooms));
+
+  socket.on("join room", async (roomName: string) => {
+    socket.join(roomName);
+    const rooms = await getAllRooms();
+    socket.emit("fetch active rooms", JSON.stringify(rooms));
   });
 });
+
 
 server.listen(3000, () => {
   console.log('server running at http://localhost:3000');
 });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 // import { Server } from "socket.io";
 
