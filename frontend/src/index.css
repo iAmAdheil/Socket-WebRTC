@@ -38,12 +38,16 @@ All colors MUST be HSL.
 
     --radius: 0.75rem;
 
-    --gradient-primary: linear-gradient(135deg, hsl(215 70% 45%), hsl(190 85% 55%));
+    --gradient-primary: linear-gradient(
+      135deg,
+      hsl(215 70% 45%),
+      hsl(190 85% 55%)
+    );
     --gradient-card: linear-gradient(180deg, hsl(0 0% 100%), hsl(210 20% 97%));
-    
+
     --shadow-soft: 0 4px 20px -4px hsl(215 70% 45% / 0.15);
     --shadow-medium: 0 8px 30px -8px hsl(215 70% 45% / 0.25);
-    
+
     --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 
     --sidebar-background: 0 0% 98%;
@@ -84,10 +88,18 @@ All colors MUST be HSL.
     --border: 215 20% 20%;
     --input: 215 20% 20%;
     --ring: 215 70% 55%;
-    
-    --gradient-primary: linear-gradient(135deg, hsl(215 70% 55%), hsl(190 85% 65%));
-    --gradient-card: linear-gradient(180deg, hsl(215 25% 12%), hsl(215 25% 10%));
-    
+
+    --gradient-primary: linear-gradient(
+      135deg,
+      hsl(215 70% 55%),
+      hsl(190 85% 65%)
+    );
+    --gradient-card: linear-gradient(
+      180deg,
+      hsl(215 25% 12%),
+      hsl(215 25% 10%)
+    );
+
     --shadow-soft: 0 4px 20px -4px hsl(0 0% 0% / 0.4);
     --shadow-medium: 0 8px 30px -8px hsl(0 0% 0% / 0.6);
 
@@ -144,5 +156,15 @@ All colors MUST be HSL.
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Hide scrollbar for IE, Edge and Firefox */
+  .no-scrollbar {
+    -ms-overflow-style: none; /* IE and Edge */
+    scrollbar-width: none; /* Firefox */
   }
 }

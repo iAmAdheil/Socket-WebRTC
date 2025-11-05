@@ -51,13 +51,20 @@ app.get('/', (req, res) => {
 });
 
 io.of("/").on("connection", async (socket) => {
+  console.log(socket.handshake.auth.username, "joined!");
+
   const rooms = await getAllRooms();
   socket.emit("fetch active rooms", JSON.stringify(rooms));
 
   socket.on("join room", async (roomName: string) => {
     socket.join(roomName);
     const rooms = await getAllRooms();
-    io.emit("fetch active rooms", JSON.stringify(rooms));
+
+    io.except(roomName).emit("fetch active rooms", JSON.stringify(rooms));
+
+    const clients = [...(io.sockets.adapter.rooms.get(roomName) || [])];
+    console.log(clients);
+    // socket.emit("room-users", clients);
   });
 
   socket.on("leave room", async (roomName: string) => {
@@ -69,7 +76,7 @@ io.of("/").on("connection", async (socket) => {
   socket.on("disconnect", async () => {
     const rooms = await getAllRooms();
     io.emit("fetch active rooms", JSON.stringify(rooms));
-    console.log("User disconnected:", socket.id);
+    console.log("User disconnected:", socket.handshake.auth.username);
   });
 });
 
@@ -77,14 +84,6 @@ io.of("/").on("connection", async (socket) => {
 server.listen(3000, () => {
   console.log('server running at http://localhost:3000');
 });
-
-// import { Server } from "socket.io";
-
-// const app = express();
-// const server = http.createServer(app);
-// const io = new Server(server, {
-// 	cors: { origin: "*" },
-// });
 
 // io.on("connection", (socket) => {
 // 	console.log("User connected:", socket.id);
@@ -120,5 +119,3 @@ server.listen(3000, () => {
 // 		console.log("User disconnected:", socket.id);
 // 	});
 // });
-
-// server.listen(3000, () => console.log("Signaling server on port 3000"));

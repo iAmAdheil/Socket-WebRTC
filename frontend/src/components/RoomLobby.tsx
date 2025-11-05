@@ -21,17 +21,6 @@ interface RoomLobbyProps {
   rooms: Room[];
 }
 
-const testRooms = [
-  {
-    name: "General Discussion",
-    activeUsers: ["Alice", "Bob", "Charlie"],
-  },
-  {
-    name: "Tech Talk",
-    activeUsers: ["David", "Eve", "Frank"],
-  },
-];
-
 const RoomLobby = ({
   username,
   onJoinRoom,
@@ -144,9 +133,9 @@ const RoomLobby = ({
         </div>
 
         {/* Rooms Grid */}
-        {testRooms.length > 0 ? (
+        {rooms.length > 0 ? (
           <div className="w-full grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-            {testRooms.map((room, index) => (
+            {rooms.map((room, index) => (
               <div
                 key={room.name}
                 style={{ animationDelay: `${index * 0.1}s` }}
@@ -160,17 +149,19 @@ const RoomLobby = ({
             ))}
           </div>
         ) : (
-          <div className="flex-1 h-full w-full flex flex-col justify-center items-center mx-auto">
-            <h3 className="text-2xl font-bold mb-3">No active rooms</h3>
-            <p className="text-muted-foreground mb-8 text-lg">
-              Be the first to create a room and start chatting with others
-            </p>
+          <div className="flex-1 h-full w-full flex flex-col justify-center items-center gap-8 mx-auto">
+            <div className="w-full flex flex-col gap-1 text-center">
+              <h3 className="text-2xl md:text-3xl font-bold">No active rooms</h3>
+              <p className="text-muted-foreground text-base md:text-lg">
+                Be the first to create a room and start chatting with others
+              </p>
+            </div>
             <Button
               onClick={() => setCreateDialogOpen(true)}
               size="lg"
-              className="bg-gradient-primary hover:opacity-90 transition-all duration-300 shadow-medium hover:shadow-lg hover:scale-105 text-base font-semibold h-12 px-8"
+              className="flex flex-row items-center gap-4 bg-gradient-primary hover:opacity-90 transition-all duration-300 shadow-medium hover:shadow-lg text-base font-semibold px-6 py-3 h-fit"
             >
-              <Plus className="w-5 h-5 mr-2" />
+              <Plus className="w-6 h-6" />
               Create First Room
             </Button>
           </div>

@@ -1,3 +1,4 @@
+import { useState, useRef, useEffect } from "react";
 import {
   Video,
   Mic,
@@ -10,9 +11,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import ThemeToggle from "./ThemeToggle";
-import { useState } from "react";
+import { Avatar, AvatarFallback } from "./ui/avatar";
 
 interface RoomViewProps {
   roomName: string;
@@ -28,7 +28,9 @@ const RoomView = ({
   onLeave,
 }: RoomViewProps) => {
   const [micMuted, setMicMuted] = useState(false);
-  const [videoOff, setVideoOff] = useState(false);
+  const [isVideo, setIsVideo] = useState(false);
+
+  const streamRef = useRef<HTMLVideoElement | null>(null);
 
   const getGridCols = (count: number) => {
     if (count === 1) return "grid-cols-1";
@@ -37,6 +39,32 @@ const RoomView = ({
     if (count <= 6) return "grid-cols-1 md:grid-cols-2 lg:grid-cols-3";
     return "grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4";
   };
+
+  useEffect(() => {
+    if (isVideo) {
+      playVideoFromCamera();
+    } else {
+      stopVideo();
+    }
+  }, [isVideo]);
+
+  async function playVideoFromCamera() {
+    try {
+      const constraints = { video: true, audio: true };
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      streamRef.current.srcObject = stream;
+    } catch (error) {
+      console.error("Error opening video camera.", error);
+    }
+  }
+
+  function stopVideo() {
+    const stream = streamRef.current.srcObject;
+    if (stream && stream instanceof MediaStream) {
+      stream.getTracks().forEach((track) => track.stop());
+    }
+    streamRef.current.srcObject = null;
+  }
 
   return (
     <div className="h-screen bg-gradient-to-br from-background via-background to-muted/20 flex flex-col">
@@ -75,23 +103,34 @@ const RoomView = ({
       </header>
 
       {/* Video Grid */}
-      <main className="flex-1 container mx-auto px-6 sm:px-8 lg:px-12 py-10 overflow-auto">
+      <main className="flex-1 container mx-auto px-6 sm:px-8 lg:px-12 py-10 overflow-auto no-scrollbar">
         <div className={`grid ${getGridCols(participants.length)} gap-4`}>
           {/* Current User Video */}
           <Card className="aspect-video bg-gradient-card relative overflow-hidden group shadow-medium animate-fade-in border-2 border-primary/20">
-            <div className="absolute inset-0 bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center">
-              <div className="text-center">
-                <Avatar className="w-24 h-24 mx-auto mb-4 border-4 border-primary/20 shadow-medium">
-                  <AvatarFallback className="bg-primary text-primary-foreground text-3xl font-bold">
-                    {username.charAt(0).toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
-                <p className="font-semibold text-lg text-foreground">
-                  {username}
-                </p>
-                <p className="text-sm text-muted-foreground mt-1">You</p>
+            {!isVideo && (
+              <div className="absolute inset-0 bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center">
+                <div className="text-center flex flex-col gap-2">
+                  <Avatar className="w-24 h-24 mx-auto shadow-medium">
+                    <AvatarFallback className="bg-primary text-primary-foreground text-3xl font-bold">
+                      {username.charAt(0).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div>
+                    <p className="font-semibold text-lg text-foreground">
+                      {username}
+                    </p>
+                    <p className="text-sm text-muted-foreground">You</p>
+                  </div>
+                </div>
               </div>
-            </div>
+            )}
+            <video
+              ref={streamRef}
+              className="inset-0"
+              autoPlay
+              playsInline
+              muted
+            />
             <div className="absolute top-4 left-4">
               <Badge className="bg-accent text-accent-foreground shadow-medium">
                 You
@@ -114,10 +153,10 @@ const RoomView = ({
               </div>
               <div
                 className={`w-10 h-10 ${
-                  videoOff ? "bg-destructive" : "bg-background/90"
+                  !isVideo ? "bg-destructive" : "bg-background/90"
                 } backdrop-blur-sm rounded-full flex items-center justify-center shadow-medium`}
               >
-                {videoOff ? (
+                {!isVideo ? (
                   <VideoOff className="w-4 h-4 text-destructive-foreground" />
                 ) : (
                   <Video className="w-4 h-4" />
@@ -126,7 +165,6 @@ const RoomView = ({
             </div>
           </Card>
 
-          {/* Other Participants */}
           {participants
             .filter((p) => p !== username)
             .map((participant, index) => (
@@ -136,8 +174,8 @@ const RoomView = ({
                 style={{ animationDelay: `${(index + 1) * 0.1}s` }}
               >
                 <div className="absolute inset-0 bg-gradient-to-br from-muted/40 to-muted/20 flex items-center justify-center">
-                  <div className="text-center">
-                    <Avatar className="w-20 h-20 mx-auto mb-3 border-2 border-primary/20 shadow-soft">
+                  <div className="text-center flex flex-col gap-2">
+                    <Avatar className="w-20 h-20 mx-auto shadow-soft">
                       <AvatarFallback className="bg-primary/20 text-primary text-2xl font-bold">
                         {participant.charAt(0).toUpperCase()}
                       </AvatarFallback>
@@ -182,15 +220,15 @@ const RoomView = ({
             </Button>
             <Button
               size="lg"
-              variant={videoOff ? "destructive" : "outline"}
-              onClick={() => setVideoOff(!videoOff)}
+              variant={!isVideo ? "destructive" : "outline"}
+              onClick={() => setIsVideo((prevState) => !prevState)}
               className={`w-16 h-16 rounded-full transition-all duration-200 shadow-medium hover:shadow-lg ${
-                videoOff
+                !isVideo
                   ? "bg-destructive hover:bg-destructive/70 text-destructive-foreground"
                   : "hover:bg-primary hover:bg-gray-100"
               }`}
             >
-              {videoOff ? (
+              {!isVideo ? (
                 <VideoOff className="w-6 h-6" color="white" />
               ) : (
                 <Video className="w-6 h-6" color="black" />

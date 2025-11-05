@@ -20,8 +20,6 @@ const Index = () => {
 
   const socketRef = useRef<Socket>(null);
 
-  // Mock participants for demo
-  // const mockParticipants = ["Alice", "Bob", "Charlie"];
   const mockParticipants = ["Alice", "Alice", "Alice"];
 
   useEffect(() => {
