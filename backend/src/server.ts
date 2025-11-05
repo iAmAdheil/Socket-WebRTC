@@ -57,7 +57,19 @@ io.of("/").on("connection", async (socket) => {
   socket.on("join room", async (roomName: string) => {
     socket.join(roomName);
     const rooms = await getAllRooms();
-    socket.emit("fetch active rooms", JSON.stringify(rooms));
+    io.emit("fetch active rooms", JSON.stringify(rooms));
+  });
+
+  socket.on("leave room", async (roomName: string) => {
+    socket.leave(roomName);
+    const rooms = await getAllRooms();
+    io.emit("fetch active rooms", JSON.stringify(rooms));
+  });
+
+  socket.on("disconnect", async () => {
+    const rooms = await getAllRooms();
+    io.emit("fetch active rooms", JSON.stringify(rooms));
+    console.log("User disconnected:", socket.id);
   });
 });
 

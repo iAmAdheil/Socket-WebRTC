@@ -15,13 +15,14 @@ export interface Room {
 const Index = () => {
   const [appState, setAppState] = useState<AppState>("username");
   const [username, setUsername] = useState("");
-  // const [currentRoomName, setCurrentRoomName] = useState("");
+  const [currentRoomName, setCurrentRoomName] = useState("");
   const [rooms, setRooms] = useState<Room[]>([]);
 
   const socketRef = useRef<Socket>(null);
 
   // Mock participants for demo
-  const mockParticipants = ["Alice", "Bob", "Charlie"];
+  // const mockParticipants = ["Alice", "Bob", "Charlie"];
+  const mockParticipants = ["Alice", "Alice", "Alice"];
 
   useEffect(() => {
     const startListening = () => {
@@ -35,6 +36,7 @@ const Index = () => {
       socketRef.current?.on("fetch active rooms", (roomsStr) => {
         if (appState === "lobby") {
           const rooms = JSON.parse(roomsStr) as Room[];
+          console.log(rooms);
           setRooms(rooms);
         }
       });
@@ -59,19 +61,22 @@ const Index = () => {
   };
 
   const handleJoinRoom = (roomName: string) => {
-    // setCurrentRoomName(roomName);
+    setCurrentRoomName(roomName);
     setAppState("room");
+    socketRef.current?.emit("join room", roomName);
   };
 
   const handleLeaveRoom = () => {
-    // setCurrentRoomName("");
+    setCurrentRoomName("");
     setAppState("lobby");
+    socketRef.current?.emit("leave room", currentRoomName);
   };
 
   const handleLogout = () => {
     setUsername("");
-    // setCurrentRoomName("");
+    setCurrentRoomName("");
     setAppState("username");
+    socketRef.current?.disconnect();
   };
 
   return (
