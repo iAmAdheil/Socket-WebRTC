@@ -20,6 +20,7 @@ interface RoomViewProps {
   username: string;
   participants: RoomUser[];
   onLeave: () => void;
+  streamRef: React.MutableRefObject<MediaStream | null>;
 }
 
 const RoomView = ({
@@ -27,11 +28,12 @@ const RoomView = ({
   username,
   participants,
   onLeave,
+  streamRef,
 }: RoomViewProps) => {
   const [micMuted, setMicMuted] = useState(false);
-  const [isVideo, setIsVideo] = useState(false);
+  const [isVideo, setIsVideo] = useState(true);
 
-  const streamRef = useRef<HTMLVideoElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
 
   const getGridCols = (count: number) => {
     if (count === 1) return "grid-cols-1";
@@ -53,18 +55,19 @@ const RoomView = ({
     try {
       const constraints = { video: true, audio: true };
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      streamRef.current.srcObject = stream;
+      streamRef.current = stream;
+      videoRef.current.srcObject = stream;
     } catch (error) {
       console.error("Error opening video camera.", error);
     }
   }
 
   function stopVideo() {
-    const stream = streamRef.current.srcObject;
+    const stream = videoRef.current.srcObject;
     if (stream && stream instanceof MediaStream) {
       stream.getTracks().forEach((track) => track.stop());
     }
-    streamRef.current.srcObject = null;
+    videoRef.current.srcObject = null;
   }
 
   return (
@@ -126,8 +129,8 @@ const RoomView = ({
               </div>
             )}
             <video
-              ref={streamRef}
-              className="inset-0"
+              ref={videoRef}
+              className="w-full h-full"
               autoPlay
               playsInline
               muted
@@ -174,18 +177,29 @@ const RoomView = ({
                 className="aspect-video bg-gradient-card relative overflow-hidden group shadow-medium animate-fade-in hover:shadow-lg transition-all duration-300 hover:border-primary/30"
                 style={{ animationDelay: `${(index + 1) * 0.1}s` }}
               >
-                <div className="absolute inset-0 bg-gradient-to-br from-muted/40 to-muted/20 flex items-center justify-center">
-                  <div className="text-center flex flex-col gap-2">
-                    <Avatar className="w-20 h-20 mx-auto shadow-soft">
-                      <AvatarFallback className="bg-primary/20 text-primary text-2xl font-bold">
-                        {p.username.charAt(0).toUpperCase()}
-                      </AvatarFallback>
-                    </Avatar>
-                    <p className="font-semibold text-foreground">
-                      {p.username}
-                    </p>
+                {!p.videoStream && (
+                  <div className="absolute inset-0 bg-gradient-to-br from-muted/40 to-muted/20 flex items-center justify-center">
+                    <div className="text-center flex flex-col gap-2">
+                      <Avatar className="w-20 h-20 mx-auto shadow-soft">
+                        <AvatarFallback className="bg-primary/20 text-primary text-2xl font-bold">
+                          {p.username.charAt(0).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <p className="font-semibold text-foreground">
+                        {p.username}
+                      </p>
+                    </div>
                   </div>
-                </div>
+                )}
+                <video
+                  ref={(video) => {
+                    if (video) video.srcObject = p.videoStream;
+                  }}
+                  className="inset-0"
+                  autoPlay
+                  playsInline
+                  muted
+                />
                 <div className="absolute bottom-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                   <div className="w-10 h-10 bg-background/90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-medium border-2 border-border/50">
                     <Mic className="w-5 h-5 text-muted-foreground" />

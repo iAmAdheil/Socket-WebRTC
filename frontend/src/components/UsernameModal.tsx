@@ -1,5 +1,10 @@
 import { useState } from "react";
-import { Dialog, DialogContent, DialogHeader } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Users, Sparkles } from "lucide-react";
@@ -31,10 +36,10 @@ const UsernameModal = ({ open, onSubmit }: UsernameModalProps) => {
               <Sparkles className="w-5 h-5 text-accent" />
             </div>
           </div>
+          <DialogTitle className="text-3xl font-bold text-center bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+            Welcome to VideoChat
+          </DialogTitle>
         </DialogHeader>
-        <h1 className="text-3xl font-bold text-center bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-          Welcome to VideoChat
-        </h1>
         <form onSubmit={handleSubmit} className="w-full flex flex-col gap-4">
           <Input
             placeholder="Enter your username"

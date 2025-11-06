@@ -18,6 +18,12 @@ export interface Room {
   activeUsers: string[];
 }
 
+export interface RoomUser {
+  id: string;
+  username: string;
+  videoStream: MediaStream | null;
+}
+
 async function getAllRooms(): Promise<Room[]> {
   const rooms: Room[] = [];
   const allRooms = io.of("/").adapter.rooms;
@@ -59,16 +65,20 @@ io.of("/").on("connection", async (socket) => {
     const rooms = await getAllRooms();
     io.except(roomName).emit("fetch active rooms", JSON.stringify(rooms));
 
-    io.to(roomName).except(socket.id).emit("add new room user", JSON.stringify({
+    const newUser: RoomUser = {
       id: socket.id,
       username: socket.handshake.auth.username,
-    }));
+      videoStream: null
+    }
+    console.log(newUser)
+    io.to(roomName).except(socket.id).emit("add new room user", JSON.stringify(newUser));
 
     const clientIDs = io.sockets.adapter.rooms.get(roomName) || new Set();
     // 2. Prepare an array to hold the client details (ID and Username)
     const clientsWithUsernames = [];
     // 3. Iterate over the client IDs to find the corresponding socket and its handshake data
     for (const clientID of clientIDs) {
+      if (clientID === socket.id) continue;
       // Get the actual Socket object for the client ID
       const s = io.sockets.sockets.get(clientID);
 
@@ -78,13 +88,41 @@ io.of("/").on("connection", async (socket) => {
         const username = s.handshake.auth.username;
 
         clientsWithUsernames.push({
-          id: clientID,
+          id: clientID, // socketID
           username: username,
         });
       }
     }
     console.log(clientsWithUsernames);
-    io.to(roomName).emit("fetch room users", JSON.stringify(clientsWithUsernames));
+    if (clientsWithUsernames.length > 0) {
+      socket.emit("fetch room users", JSON.stringify(clientsWithUsernames));
+    }
+  });
+
+  socket.on("offer", async (data: { to: string, offer: RTCSessionDescriptionInit }) => {
+    const s = io.sockets.sockets.get(data.to);
+    if (s) {
+      s.emit("offer", {
+        from: socket.id,
+        offer: data.offer,
+      });
+    } else {
+      console.log("User not found");
+    }
+  });
+
+  socket.on("answer", async (data: { to: string, answer: RTCSessionDescriptionInit }) => {
+    io.to(data.to).emit("answer", {
+      from: socket.id,
+      answer: data.answer,
+    });
+  });
+
+  socket.on("candidate", async (data: { to: string, candidate: RTCIceCandidateInit }) => {
+    io.to(data.to).emit("candidate", {
+      from: socket.id,
+      candidate: data.candidate,
+    });
   });
 
   socket.on("leave room", async (roomName: string) => {
