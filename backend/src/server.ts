@@ -148,14 +148,25 @@ io.of("/").on("connection", async (socket) => {
     });
   });
 
-
-
-
-  // need to work on
   socket.on("leave room", async (roomName: string) => {
-    socket.leave(roomName);
+    if (!roomName) {
+      return;
+    }
+
+    if (socket.rooms.has(roomName)) {
+      socket.to(roomName).emit("remove room user", socket.id);
+      await socket.leave(roomName);
+    }
+
     const rooms = await getAllRooms();
     io.emit("fetch active rooms", JSON.stringify(rooms));
+  });
+
+  socket.on("disconnecting", () => {
+    for (const roomName of socket.rooms) {
+      if (roomName === socket.id) continue;
+      socket.to(roomName).emit("remove room user", socket.id);
+    }
   });
 
   socket.on("disconnect", async () => {

@@ -35,6 +35,23 @@ const Index = () => {
   const streamRef = useRef<MediaStream | null>(null);
   const pcsRef = useRef<Record<string, RTCPeerConnection>>({});
 
+  const ensureLocalStream = useCallback(async () => {
+    if (streamRef.current) {
+      return streamRef.current;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: true,
+      });
+      streamRef.current = stream;
+      return stream;
+    } catch (error) {
+      console.error("Error accessing user media", error);
+      throw error;
+    }
+  }, []);
+
   useEffect(() => {
     const startListening = async () => {
       console.log("activating socket!");
@@ -185,6 +202,23 @@ const Index = () => {
           );
         }
       );
+
+      socketRef.current?.on("remove room user", (userId: string) => {
+        setRoomUsers((prev) => prev.filter((user) => user.id !== userId));
+        const pc = pcsRef.current[userId];
+        if (pc) {
+          try {
+            pc.close();
+          } catch (error) {
+            console.warn(
+              "Error closing RTCPeerConnection for user",
+              userId,
+              error
+            );
+          }
+          delete pcsRef.current[userId];
+        }
+      });
     };
 
     if (appState === "username" && socketRef.current !== null) {
@@ -193,7 +227,33 @@ const Index = () => {
     } else if (socketRef.current === null && appState !== "username") {
       startListening();
     }
-  }, [appState, username]);
+  }, [appState, ensureLocalStream, username]);
+
+  const cleanupPeerConnections = useCallback(() => {
+    Object.values(pcsRef.current).forEach((pc) => {
+      try {
+        pc.close();
+      } catch (error) {
+        console.warn("Error closing RTCPeerConnection", error);
+      }
+    });
+    pcsRef.current = {};
+  }, []);
+
+  const stopLocalStream = useCallback(() => {
+    const stream = streamRef.current;
+    if (!stream) return;
+
+    stream.getTracks().forEach((track) => {
+      try {
+        track.stop();
+      } catch (error) {
+        console.warn("Error stopping media track", error);
+      }
+    });
+
+    streamRef.current = null;
+  }, []);
 
   const broadcastMediaState = useCallback(
     (kind: "video" | "audio", enabled: boolean) => {
@@ -274,54 +334,59 @@ const Index = () => {
     };
   }, []);
 
-  const handleUsernameSubmit = (name: string) => {
+  const handleUsernameSubmit = useCallback((name: string) => {
     setUsername(name);
     setAppState("lobby");
-  };
+  }, []);
 
-  const handleJoinRoom = (roomName: string) => {
-    setCurrentRoomName(roomName);
-    ensureLocalStream()
-      .then(() => {
-        socketRef.current?.emit("join room", roomName);
-      })
-      .catch((error) => {
-        console.error(
-          "Failed to acquire local media before joining room",
-          error
-        );
-      });
-  };
+  const handleJoinRoom = useCallback(
+    (roomName: string) => {
+      setCurrentRoomName(roomName);
+      ensureLocalStream()
+        .then(() => {
+          socketRef.current?.emit("join room", roomName);
+        })
+        .catch((error) => {
+          console.error(
+            "Failed to acquire local media before joining room",
+            error
+          );
+        });
+    },
+    [ensureLocalStream]
+  );
 
-  const handleLeaveRoom = () => {
-    // setCurrentRoomName("");
-    // setAppState("lobby");
-    // socketRef.current?.emit("leave room", currentRoomName);
-  };
-
-  const handleLogout = () => {
-    // setUsername("");
-    // setCurrentRoomName("");
-    // setAppState("username");
-    // socketRef.current?.disconnect();
-  };
-
-  const ensureLocalStream = async () => {
-    if (streamRef.current) {
-      return streamRef.current;
+  const handleLeaveRoom = useCallback(() => {
+    if (currentRoomName) {
+      socketRef.current?.emit("leave room", currentRoomName);
     }
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: true,
-        audio: true,
-      });
-      streamRef.current = stream;
-      return stream;
-    } catch (error) {
-      console.error("Error accessing user media", error);
-      throw error;
+
+    cleanupPeerConnections();
+    stopLocalStream();
+    setRoomUsers([]);
+    setCurrentRoomName("");
+    setAppState("lobby");
+  }, [cleanupPeerConnections, currentRoomName, stopLocalStream]);
+
+  const handleLogout = useCallback(() => {
+    if (currentRoomName) {
+      socketRef.current?.emit("leave room", currentRoomName);
     }
-  };
+
+    cleanupPeerConnections();
+    stopLocalStream();
+
+    setRoomUsers([]);
+    setRooms([]);
+    setCurrentRoomName("");
+    setUsername("");
+    setAppState("username");
+
+    if (socketRef.current) {
+      socketRef.current.disconnect();
+      socketRef.current = null;
+    }
+  }, [cleanupPeerConnections, currentRoomName, stopLocalStream]);
 
   function createPC(remoteId: string) {
     const pc = new RTCPeerConnection(config);
