@@ -7,7 +7,7 @@ const app = express();
 const server = createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: "http://localhost:8080",
+    origin: "*",
     methods: ["GET", "POST"]
   }
 });
@@ -15,13 +15,17 @@ const io = new Server(server, {
 export interface Room {
   id: string;
   name: string;
-  activeUsers: string[];
+  activeUsers: {
+    id: string;
+    username: string;
+  }[];
 }
 
 export interface RoomUser {
   id: string;
   username: string;
-  videoStream: MediaStream | null;
+  isVideoEnabled: boolean;
+  isAudioEnabled: boolean;
 }
 
 async function getAllRooms(): Promise<Room[]> {
@@ -35,7 +39,10 @@ async function getAllRooms(): Promise<Room[]> {
       const sockets = await io.in(roomName).fetchSockets();
 
       const activeUsers = sockets.map(socket =>
-        socket.data.username || socket.data.userId || socket.id
+      ({
+        id: socket.id,
+        username: socket.handshake.auth.username
+      })
       );
 
       rooms.push({
@@ -59,6 +66,10 @@ app.get('/', (req, res) => {
 io.of("/").on("connection", async (socket) => {
   const rooms = await getAllRooms();
   socket.emit("fetch active rooms", JSON.stringify(rooms));
+  socket.data.mediaState = {
+    videoEnabled: true,
+    audioEnabled: true
+  };
 
   socket.on("join room", async (roomName: string) => {
     await socket.join(roomName);
@@ -68,9 +79,9 @@ io.of("/").on("connection", async (socket) => {
     const newUser: RoomUser = {
       id: socket.id,
       username: socket.handshake.auth.username,
-      videoStream: null
-    }
-    console.log(newUser)
+      isVideoEnabled: socket.data.mediaState.videoEnabled ?? true,
+      isAudioEnabled: socket.data.mediaState.audioEnabled ?? true
+    };
     io.to(roomName).except(socket.id).emit("add new room user", JSON.stringify(newUser));
 
     const clientIDs = io.sockets.adapter.rooms.get(roomName) || new Set();
@@ -81,7 +92,6 @@ io.of("/").on("connection", async (socket) => {
       if (clientID === socket.id) continue;
       // Get the actual Socket object for the client ID
       const s = io.sockets.sockets.get(clientID);
-
       if (s) {
         // Access the username from the handshake.auth object
         // Assuming the client sends { auth: { username: '...' } }
@@ -90,13 +100,26 @@ io.of("/").on("connection", async (socket) => {
         clientsWithUsernames.push({
           id: clientID, // socketID
           username: username,
+          isVideoEnabled: s.data.mediaState?.videoEnabled ?? true,
+          isAudioEnabled: s.data.mediaState?.audioEnabled ?? true,
         });
       }
     }
-    console.log(clientsWithUsernames);
-    if (clientsWithUsernames.length > 0) {
-      socket.emit("fetch room users", JSON.stringify(clientsWithUsernames));
+
+    socket.emit("fetch room users", JSON.stringify(clientsWithUsernames));
+  });
+
+  socket.on("media state change", async (data: { roomName: string, kind: "video" | "audio", enabled: boolean }) => {
+    if (data.kind === "video") {
+      socket.data.mediaState.videoEnabled = data.enabled;
+    } else if (data.kind === "audio") {
+      socket.data.mediaState.audioEnabled = data.enabled;
     }
+    socket.to(data.roomName).emit("media state change", {
+      userId: socket.id,
+      kind: data.kind,
+      enabled: data.enabled,
+    });
   });
 
   socket.on("offer", async (data: { to: string, offer: RTCSessionDescriptionInit }) => {
@@ -125,6 +148,10 @@ io.of("/").on("connection", async (socket) => {
     });
   });
 
+
+
+
+  // need to work on
   socket.on("leave room", async (roomName: string) => {
     socket.leave(roomName);
     const rooms = await getAllRooms();
@@ -138,41 +165,6 @@ io.of("/").on("connection", async (socket) => {
 });
 
 
-server.listen(3000, () => {
+server.listen(3000, '0.0.0.0', () => {
   console.log('server running at http://localhost:3000');
 });
-
-// io.on("connection", (socket) => {
-// 	console.log("User connected:", socket.id);
-
-// 	socket.on("join", (roomId) => {
-// 		socket.join(roomId);
-// 		console.log(`User ${socket.id} joined room ${roomId}`);
-// 		socket.to(roomId).emit("user-joined", socket.id);
-// 	});
-
-// 	socket.on("offer", (data) => {
-// 		socket.to(data.roomId).emit("offer", {
-// 			sdp: data.sdp,
-// 			from: socket.id,
-// 		});
-// 	});
-
-// 	socket.on("answer", (data) => {
-// 		socket.to(data.roomId).emit("answer", {
-// 			sdp: data.sdp,
-// 			from: socket.id,
-// 		});
-// 	});
-
-// 	socket.on("ice-candidate", (data) => {
-// 		socket.to(data.roomId).emit("ice-candidate", {
-// 			candidate: data.candidate,
-// 			from: socket.id,
-// 		});
-// 	});
-
-// 	socket.on("disconnect", () => {
-// 		console.log("User disconnected:", socket.id);
-// 	});
-// });

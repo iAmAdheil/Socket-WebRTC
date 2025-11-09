@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import {
   Video,
   Mic,
@@ -21,6 +21,8 @@ interface RoomViewProps {
   participants: RoomUser[];
   onLeave: () => void;
   streamRef: React.MutableRefObject<MediaStream | null>;
+  onVideoToggle: (enabled: boolean) => void;
+  onAudioToggle: (enabled: boolean) => void;
 }
 
 const RoomView = ({
@@ -29,6 +31,8 @@ const RoomView = ({
   participants,
   onLeave,
   streamRef,
+  onVideoToggle,
+  onAudioToggle,
 }: RoomViewProps) => {
   const [micMuted, setMicMuted] = useState(false);
   const [isVideo, setIsVideo] = useState(true);
@@ -43,32 +47,35 @@ const RoomView = ({
     return "grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4";
   };
 
-  useEffect(() => {
-    if (isVideo) {
-      playVideoFromCamera();
-    } else {
-      stopVideo();
-    }
-  }, [isVideo]);
-
-  async function playVideoFromCamera() {
+  const playVideoFromCamera = useCallback(async () => {
     try {
       const constraints = { video: true, audio: true };
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      streamRef.current = stream;
-      videoRef.current.srcObject = stream;
+      let stream = streamRef.current;
+      if (!stream) {
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+        streamRef.current = stream;
+      }
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
     } catch (error) {
       console.error("Error opening video camera.", error);
     }
-  }
+  }, [streamRef, videoRef]);
 
-  function stopVideo() {
-    const stream = videoRef.current.srcObject;
-    if (stream && stream instanceof MediaStream) {
-      stream.getTracks().forEach((track) => track.stop());
+  const stopVideo = useCallback(() => {
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
     }
-    videoRef.current.srcObject = null;
-  }
+  }, []);
+
+  useEffect(() => {
+    if (isVideo) {
+      void playVideoFromCamera();
+    } else {
+      stopVideo();
+    }
+  }, [isVideo, playVideoFromCamera, stopVideo]);
 
   return (
     <div className="h-screen bg-gradient-to-br from-background via-background to-muted/20 flex flex-col">
@@ -177,7 +184,7 @@ const RoomView = ({
                 className="aspect-video bg-gradient-card relative overflow-hidden group shadow-medium animate-fade-in hover:shadow-lg transition-all duration-300 hover:border-primary/30"
                 style={{ animationDelay: `${(index + 1) * 0.1}s` }}
               >
-                {!p.videoStream && (
+                {(!p.videoStream || !p.isVideoEnabled) && (
                   <div className="absolute inset-0 bg-gradient-to-br from-muted/40 to-muted/20 flex items-center justify-center">
                     <div className="text-center flex flex-col gap-2">
                       <Avatar className="w-20 h-20 mx-auto shadow-soft">
@@ -193,19 +200,28 @@ const RoomView = ({
                 )}
                 <video
                   ref={(video) => {
-                    if (video) video.srcObject = p.videoStream;
+                    if (video) {
+                      video.srcObject = p.isVideoEnabled ? p.videoStream : null;
+                    }
                   }}
                   className="inset-0"
                   autoPlay
                   playsInline
-                  muted
                 />
                 <div className="absolute bottom-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                   <div className="w-10 h-10 bg-background/90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-medium border-2 border-border/50">
-                    <Mic className="w-5 h-5 text-muted-foreground" />
+                    {p.isAudioEnabled ? (
+                      <Mic className="w-5 h-5 text-muted-foreground" />
+                    ) : (
+                      <MicOff className="w-5 h-5 text-destructive" />
+                    )}
                   </div>
                   <div className="w-10 h-10 bg-background/90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-medium border-2 border-border/50">
-                    <Video className="w-5 h-5 text-muted-foreground" />
+                    {p.isVideoEnabled ? (
+                      <Video className="w-5 h-5 text-muted-foreground" />
+                    ) : (
+                      <VideoOff className="w-5 h-5 text-destructive" />
+                    )}
                   </div>
                 </div>
               </Card>
@@ -220,7 +236,13 @@ const RoomView = ({
             <Button
               size="lg"
               variant={micMuted ? "destructive" : "outline"}
-              onClick={() => setMicMuted(!micMuted)}
+              onClick={() =>
+                setMicMuted((prev) => {
+                  const next = !prev;
+                  onAudioToggle(!next);
+                  return next;
+                })
+              }
               className={`w-16 h-16 rounded-full transition-all duration-200 shadow-medium hover:shadow-lg ${
                 micMuted
                   ? "bg-destructive hover:bg-destructive/70 text-destructive-foreground"
@@ -236,7 +258,13 @@ const RoomView = ({
             <Button
               size="lg"
               variant={!isVideo ? "destructive" : "outline"}
-              onClick={() => setIsVideo((prevState) => !prevState)}
+              onClick={() =>
+                setIsVideo((prevState) => {
+                  const next = !prevState;
+                  onVideoToggle(next);
+                  return next;
+                })
+              }
               className={`w-16 h-16 rounded-full transition-all duration-200 shadow-medium hover:shadow-lg ${
                 !isVideo
                   ? "bg-destructive hover:bg-destructive/70 text-destructive-foreground"

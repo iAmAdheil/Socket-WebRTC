@@ -60,7 +60,7 @@ const RoomLobby = ({
                 </h1>
               </div>
             </div>
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 sm:gap-4">
               <ThemeToggle />
               <Button
                 variant="outline"
@@ -80,7 +80,7 @@ const RoomLobby = ({
       <main className="flex-1 h-full w-full flex flex-col gap-10 md:gap-20 py-8 px-6 sm:px-8 lg:px-12">
         <div className="flex flex-row items-center md:items-start justify-between gap-6">
           <div className="space-y-1">
-            <h2 className="text-3xl md:text-4xl font-bold tracking-tight">
+            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight">
               Active Rooms
             </h2>
             <p className="hidden md:block text-muted-foreground text-base md:text-lg">
@@ -90,7 +90,7 @@ const RoomLobby = ({
 
           <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
             <DialogTrigger asChild>
-              <Button className="gap-3 bg-purple-500 hover:bg-purple-400 transition-all shadow-medium hover:shadow-lg rounded-sm text-sm md:text-[15px] px-4 py-2 duration-200">
+              <Button className="gap-3 bg-purple-500 hover:bg-purple-400 transition-all shadow-medium hover:shadow-lg rounded-sm text-xs sm:text-sm md:text-[15px] px-4 py-2 duration-200">
                 <Plus className="w-4 h-4" />
                 Create Room
               </Button>
@@ -151,17 +151,17 @@ const RoomLobby = ({
         ) : (
           <div className="flex-1 h-full w-full flex flex-col justify-center items-center gap-8 mx-auto">
             <div className="w-full flex flex-col gap-1 text-center">
-              <h3 className="text-2xl md:text-3xl font-bold">
+              <h3 className="text-xl sm:text-2xl md:text-3xl font-bold">
                 No active rooms
               </h3>
-              <p className="text-muted-foreground text-base md:text-lg">
+              <p className="text-muted-foreground text-sm sm:text-base md:text-lg">
                 Be the first to create a room and start chatting with others
               </p>
             </div>
             <Button
               onClick={() => setCreateDialogOpen(true)}
-              size="lg"
-              className="flex flex-row items-center gap-3 bg-gradient-primary hover:opacity-90 transition-all duration-300 shadow-medium hover:shadow-lg text-base px-4 py-3 h-fit"
+              size="sm"
+              className="flex flex-row items-center gap-3 bg-gradient-primary hover:opacity-90 transition-all duration-300 shadow-medium hover:shadow-lg text-xs sm:text-base px-4 py-3 h-fit"
             >
               <Plus className="w-6 h-6" />
               Create First Room

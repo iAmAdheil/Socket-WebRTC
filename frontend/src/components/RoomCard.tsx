@@ -13,7 +13,10 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
 interface RoomCardProps {
   roomName: string;
-  activeUsers: string[];
+  activeUsers: {
+    id: string;
+    username: string;
+  }[];
   onJoin: () => void;
 }
 
@@ -56,7 +59,7 @@ const RoomCard = ({ roomName, activeUsers, onJoin }: RoomCardProps) => {
                 className="w-8 h-8 border-2 border-background"
               >
                 <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
-                  {user.charAt(0).toUpperCase()}
+                  {user.username.charAt(0).toUpperCase()}
                 </AvatarFallback>
               </Avatar>
             ))}
