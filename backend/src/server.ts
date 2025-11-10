@@ -1,10 +1,22 @@
-// server.js
+// server.ts
 import express from "express";
-import { createServer } from 'node:http';
 import { Server } from 'socket.io';
+import https from 'https';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+// ES module equivalent of __dirname
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const httpsOptions = {
+  key: fs.readFileSync(path.resolve(__dirname, '../../localhost+1-key.pem')),
+  cert: fs.readFileSync(path.resolve(__dirname, '../../localhost+1.pem'))
+};
 
 const app = express();
-const server = createServer(app);
+const server = https.createServer(httpsOptions, app);
 const io = new Server(server, {
   cors: {
     origin: "*",
@@ -177,5 +189,5 @@ io.of("/").on("connection", async (socket) => {
 
 
 server.listen(3000, '0.0.0.0', () => {
-  console.log('server running at http://localhost:3000');
+  console.log('server running at https://10.0.11.158:3000');
 });

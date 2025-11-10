@@ -55,7 +55,11 @@ const Index = () => {
   useEffect(() => {
     const startListening = async () => {
       console.log("activating socket!");
-      socketRef.current = io("http://10.0.11.158:3000", {
+      // socketRef.current = io("https://10.0.11.158:3000", {
+      socketRef.current = io("https://claire-untravelling-ira.ngrok-free.dev", {
+        extraHeaders: {
+          "ngrok-skip-browser-warning": "true",
+        },
         auth: {
           username: username,
         },
