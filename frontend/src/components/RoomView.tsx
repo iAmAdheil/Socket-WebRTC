@@ -7,13 +7,18 @@ import {
   Settings,
   MicOff,
   VideoOff,
+  MessageCircle,
+  Send,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import ThemeToggle from "./ThemeToggle";
 import { Avatar, AvatarFallback } from "./ui/avatar";
-import { RoomUser } from "@/pages/Index";
+import { RoomUser, type ChatMessage } from "@/pages/Index";
+import { Input } from "@/components/ui/input";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 
 interface RoomViewProps {
   roomName: string;
@@ -23,6 +28,8 @@ interface RoomViewProps {
   streamRef: React.MutableRefObject<MediaStream | null>;
   onVideoToggle: (enabled: boolean) => void;
   onAudioToggle: (enabled: boolean) => void;
+  chatMessages: ChatMessage[];
+  onSendChat: (text: string) => void;
 }
 
 const RoomView = ({
@@ -33,9 +40,13 @@ const RoomView = ({
   streamRef,
   onVideoToggle,
   onAudioToggle,
+  chatMessages,
+  onSendChat,
 }: RoomViewProps) => {
   const [micMuted, setMicMuted] = useState(false);
   const [isVideo, setIsVideo] = useState(true);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatInput, setChatInput] = useState("");
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
@@ -77,6 +88,13 @@ const RoomView = ({
     }
   }, [isVideo, playVideoFromCamera, stopVideo]);
 
+  const handleSend = useCallback(() => {
+    const text = chatInput.trim();
+    if (!text) return;
+    onSendChat(text);
+    setChatInput("");
+  }, [chatInput, onSendChat]);
+
   return (
     <div className="h-screen bg-gradient-to-br from-background via-background to-muted/20 flex flex-col">
       {/* Header */}
@@ -108,6 +126,56 @@ const RoomView = ({
                 <Settings className="w-4 h-4" />
                 <span className="hidden sm:inline">Settings</span>
               </Button>
+              <Sheet open={chatOpen} onOpenChange={setChatOpen}>
+                <SheetTrigger asChild>
+                  <Button variant="outline" size="sm" className="gap-2">
+                    <MessageCircle className="w-4 h-4" />
+                    <span className="hidden sm:inline">Chat</span>
+                  </Button>
+                </SheetTrigger>
+                <SheetContent side="right" className="w-full sm:max-w-md p-0">
+                  <div className="flex flex-col h-full">
+                    <div className="p-4 border-b">
+                      <SheetHeader>
+                        <SheetTitle>Room chat</SheetTitle>
+                      </SheetHeader>
+                    </div>
+                    <ScrollArea className="flex-1 p-4">
+                      <div className="space-y-3">
+                        {chatMessages.map((m) => (
+                          <div key={`${m.ts}-${m.id}`} className="flex flex-col">
+                            <div className="text-xs text-muted-foreground">
+                              {m.username} • {new Date(m.ts).toLocaleTimeString()}
+                            </div>
+                            <div className="text-sm break-words">{m.text}</div>
+                          </div>
+                        ))}
+                        {chatMessages.length === 0 && (
+                          <div className="text-sm text-muted-foreground">No messages yet</div>
+                        )}
+                      </div>
+                    </ScrollArea>
+                    <div className="p-3 border-t">
+                      <div className="flex items-center gap-2">
+                        <Input
+                          placeholder="Type a message"
+                          value={chatInput}
+                          onChange={(e) => setChatInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && !e.shiftKey) {
+                              e.preventDefault();
+                              handleSend();
+                            }
+                          }}
+                        />
+                        <Button onClick={handleSend} disabled={!chatInput.trim()}>
+                          <Send className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </SheetContent>
+              </Sheet>
             </div>
           </div>
         </div>

@@ -24,12 +24,20 @@ export interface RoomUser {
   isAudioEnabled: boolean;
 }
 
+export interface ChatMessage {
+  id: string;
+  username: string;
+  text: string;
+  ts: number;
+}
+
 const Index = () => {
   const [appState, setAppState] = useState<AppState>("username");
   const [username, setUsername] = useState("");
   const [currentRoomName, setCurrentRoomName] = useState("");
   const [rooms, setRooms] = useState<Room[]>([]);
   const [roomUsers, setRoomUsers] = useState<RoomUser[]>([]);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
 
   const socketRef = useRef<Socket>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -171,6 +179,13 @@ const Index = () => {
           console.log("received an answer from:", data.from);
           const pc = pcsRef.current[data.from];
           pc.setRemoteDescription(data.answer);
+        }
+      );
+
+      socketRef.current?.on(
+        "chat message",
+        (msg: ChatMessage) => {
+          setChatMessages((prev) => [...prev, msg]);
         }
       );
 
@@ -346,6 +361,7 @@ const Index = () => {
   const handleJoinRoom = useCallback(
     (roomName: string) => {
       setCurrentRoomName(roomName);
+      setChatMessages([]);
       ensureLocalStream()
         .then(() => {
           socketRef.current?.emit("join room", roomName);
@@ -368,6 +384,7 @@ const Index = () => {
     cleanupPeerConnections();
     stopLocalStream();
     setRoomUsers([]);
+    setChatMessages([]);
     setCurrentRoomName("");
     setAppState("lobby");
   }, [cleanupPeerConnections, currentRoomName, stopLocalStream]);
@@ -382,6 +399,7 @@ const Index = () => {
 
     setRoomUsers([]);
     setRooms([]);
+    setChatMessages([]);
     setCurrentRoomName("");
     setUsername("");
     setAppState("username");
@@ -434,6 +452,29 @@ const Index = () => {
     return pc;
   }
 
+  const sendChatMessage = useCallback(
+    (text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed) return;
+      if (!currentRoomName || !socketRef.current) return;
+      socketRef.current.emit("chat message", {
+        roomName: currentRoomName,
+        text: trimmed,
+      });
+      // Optimistic append for local echo
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          id: socketRef.current?.id || "",
+          username,
+          text: trimmed,
+          ts: Date.now(),
+        },
+      ]);
+    },
+    [currentRoomName, username]
+  );
+
   return (
     <>
       {appState === "username" && (
@@ -458,6 +499,8 @@ const Index = () => {
           streamRef={streamRef}
           onVideoToggle={handleVideoToggle}
           onAudioToggle={handleAudioToggle}
+          chatMessages={chatMessages}
+          onSendChat={sendChatMessage}
         />
       )}
     </>
