@@ -5,19 +5,30 @@ import path from "path";
 import { componentTagger } from "lovable-tagger";
 
 // https://vitejs.dev/config/
-export default defineConfig(({ mode }) => ({
-  server: {
-    host: "::",
-    port: 8080,
-    https: {
-      key: fs.readFileSync(path.resolve(__dirname, '../localhost+1-key.pem')),
-      cert: fs.readFileSync(path.resolve(__dirname, '../localhost+1.pem')),
+export default defineConfig(({ mode }) => {
+  const keyPath = path.resolve(__dirname, '../localhost+1-key.pem');
+  const certPath = path.resolve(__dirname, '../localhost+1.pem');
+  let httpsOption: { key: Buffer; cert: Buffer } | undefined = undefined;
+  try {
+    if (fs.existsSync(keyPath) && fs.existsSync(certPath)) {
+      httpsOption = {
+        key: fs.readFileSync(keyPath),
+        cert: fs.readFileSync(certPath),
+      };
+    }
+  } catch {}
+
+  return {
+    server: {
+      host: "::",
+      port: 8080,
+      ...(httpsOption ? { https: httpsOption } : {}),
     },
-  },
-  plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
-  resolve: {
-    alias: {
-      "@": path.resolve(__dirname, "./src"),
+    plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
+    resolve: {
+      alias: {
+        "@": path.resolve(__dirname, "./src"),
+      },
     },
-  },
-}));
+  };
+});

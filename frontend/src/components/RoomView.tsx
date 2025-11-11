@@ -7,13 +7,21 @@ import {
   Settings,
   MicOff,
   VideoOff,
+  MessageCircle,
+  Send,
+  Paperclip,
+  Download,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import ThemeToggle from "./ThemeToggle";
 import { Avatar, AvatarFallback } from "./ui/avatar";
-import { RoomUser } from "@/pages/Index";
+import { RoomUser, type ChatMessage } from "@/pages/Index";
+import { Input } from "@/components/ui/input";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { Progress } from "@/components/ui/progress";
 
 interface RoomViewProps {
   roomName: string;
@@ -23,6 +31,11 @@ interface RoomViewProps {
   streamRef: React.MutableRefObject<MediaStream | null>;
   onVideoToggle: (enabled: boolean) => void;
   onAudioToggle: (enabled: boolean) => void;
+  chatMessages: ChatMessage[];
+  onSendChat: (text: string) => void;
+  onSendFile: (file: File) => Promise<void> | void;
+  uploadProgress: number;
+  receivedFiles: Array<{ name: string; size: number; url: string }>;
 }
 
 const RoomView = ({
@@ -33,9 +46,17 @@ const RoomView = ({
   streamRef,
   onVideoToggle,
   onAudioToggle,
+  chatMessages,
+  onSendChat,
+  onSendFile,
+  uploadProgress,
+  receivedFiles,
 }: RoomViewProps) => {
   const [micMuted, setMicMuted] = useState(false);
   const [isVideo, setIsVideo] = useState(true);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatInput, setChatInput] = useState("");
+  const [fileToSend, setFileToSend] = useState<File | null>(null);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
@@ -77,6 +98,23 @@ const RoomView = ({
     }
   }, [isVideo, playVideoFromCamera, stopVideo]);
 
+  const handleSend = useCallback(() => {
+    const text = chatInput.trim();
+    if (!text) return;
+    onSendChat(text);
+    setChatInput("");
+  }, [chatInput, onSendChat]);
+
+  const handleFilePick = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0] ?? null;
+    setFileToSend(f);
+  }, []);
+
+  const handleSendFile = useCallback(() => {
+    if (!fileToSend) return;
+    void onSendFile(fileToSend);
+  }, [fileToSend, onSendFile]);
+
   return (
     <div className="h-screen bg-gradient-to-br from-background via-background to-muted/20 flex flex-col">
       {/* Header */}
@@ -108,6 +146,80 @@ const RoomView = ({
                 <Settings className="w-4 h-4" />
                 <span className="hidden sm:inline">Settings</span>
               </Button>
+              <Sheet open={chatOpen} onOpenChange={setChatOpen}>
+                <SheetTrigger asChild>
+                  <Button variant="outline" size="sm" className="gap-2">
+                    <MessageCircle className="w-4 h-4" />
+                    <span className="hidden sm:inline">Chat</span>
+                  </Button>
+                </SheetTrigger>
+                <SheetContent side="right" className="w-full sm:max-w-md p-0">
+                  <div className="flex flex-col h-full">
+                    <div className="p-4 border-b">
+                      <SheetHeader>
+                        <SheetTitle>Room chat</SheetTitle>
+                      </SheetHeader>
+                    </div>
+                    <ScrollArea className="flex-1 p-4">
+                      <div className="space-y-3">
+                        {chatMessages.map((m) => (
+                          <div key={`${m.ts}-${m.id}`} className="flex flex-col">
+                            <div className="text-xs text-muted-foreground">
+                              {m.username} • {new Date(m.ts).toLocaleTimeString()}
+                            </div>
+                            <div className="text-sm break-words">{m.text}</div>
+                          </div>
+                        ))}
+                        {chatMessages.length === 0 && (
+                          <div className="text-sm text-muted-foreground">No messages yet</div>
+                        )}
+                        {receivedFiles.length > 0 && (
+                          <div className="pt-4 space-y-2">
+                            <div className="text-xs font-medium text-muted-foreground">Received files</div>
+                            {receivedFiles.map((f, idx) => (
+                              <div key={`${f.url}-${idx}`} className="flex items-center justify-between gap-2 text-sm">
+                                <div className="truncate" title={`${f.name} • ${(f.size/1024/1024).toFixed(2)} MB`}>{f.name}</div>
+                                <a href={f.url} download={f.name} className="inline-flex items-center gap-1 text-primary hover:underline">
+                                  <Download className="w-4 h-4" /> Download
+                                </a>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </ScrollArea>
+                    <div className="p-3 border-t">
+                      <div className="flex items-center gap-2">
+                        <Input
+                          placeholder="Type a message"
+                          value={chatInput}
+                          onChange={(e) => setChatInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && !e.shiftKey) {
+                              e.preventDefault();
+                              handleSend();
+                            }
+                          }}
+                        />
+                        <Button onClick={handleSend} disabled={!chatInput.trim()}>
+                          <Send className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </SheetContent>
+              </Sheet>
+              <div className="flex items-center gap-2">
+                <input id="file-input" type="file" className="hidden" onChange={handleFilePick} />
+                <Button asChild variant="outline" size="sm" className="gap-2">
+                  <label htmlFor="file-input" className="cursor-pointer">
+                    <span className="inline-flex items-center gap-2"><Paperclip className="w-4 h-4" /> Choose file</span>
+                  </label>
+                </Button>
+                <Button size="sm" onClick={handleSendFile} disabled={!fileToSend} className="gap-2">
+                  <Send className="w-4 h-4" /> Send
+                </Button>
+              </div>
             </div>
           </div>
         </div>
@@ -285,6 +397,12 @@ const RoomView = ({
               <PhoneOff className="w-6 h-6" />
             </Button>
           </div>
+          {fileToSend && (
+            <div className="mt-4">
+              <div className="text-xs text-muted-foreground mb-2">Sending: {fileToSend.name} ({(fileToSend.size/1024/1024).toFixed(2)} MB)</div>
+              <Progress value={uploadProgress} />
+            </div>
+          )}
         </div>
       </footer>
     </div>

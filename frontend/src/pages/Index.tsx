@@ -24,16 +24,29 @@ export interface RoomUser {
   isAudioEnabled: boolean;
 }
 
+export interface ChatMessage {
+  id: string;
+  username: string;
+  text: string;
+  ts: number;
+}
+
 const Index = () => {
   const [appState, setAppState] = useState<AppState>("username");
   const [username, setUsername] = useState("");
   const [currentRoomName, setCurrentRoomName] = useState("");
   const [rooms, setRooms] = useState<Room[]>([]);
   const [roomUsers, setRoomUsers] = useState<RoomUser[]>([]);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
 
   const socketRef = useRef<Socket>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const pcsRef = useRef<Record<string, RTCPeerConnection>>({});
+  const dcsRef = useRef<Record<string, RTCDataChannel>>({});
+  const incomingRef = useRef<Record<string, { name: string; size: number; chunks: string[]; receivedBytes: number; from: string }>>({});
+
+  const [uploadProgress, setUploadProgress] = useState<number>(0);
+  const [receivedFiles, setReceivedFiles] = useState<Array<{ name: string; size: number; url: string }>>([]);
 
   const ensureLocalStream = useCallback(async () => {
     if (streamRef.current) {
@@ -55,11 +68,9 @@ const Index = () => {
   useEffect(() => {
     const startListening = async () => {
       console.log("activating socket!");
-      // socketRef.current = io("https://10.0.11.158:3000", {
-      socketRef.current = io("https://claire-untravelling-ira.ngrok-free.dev", {
-        extraHeaders: {
-          "ngrok-skip-browser-warning": "true",
-        },
+      const SIGNAL_URL =
+        (import.meta as any).env?.VITE_SIGNAL_URL ?? `http://${window.location.hostname}:3000`;
+      socketRef.current = io(SIGNAL_URL, {
         auth: {
           username: username,
         },
@@ -126,7 +137,7 @@ const Index = () => {
             "Failed to prepare local media before creating offers",
             error
           );
-          return;
+          // Continue without local media; join should not be blocked
         }
 
         for (const user of users) {
@@ -152,7 +163,7 @@ const Index = () => {
               "Failed to prepare local media before answering offer",
               error
             );
-            return;
+            // Continue answering without local media
           }
           const pc = createPC(data.from);
           await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
@@ -171,6 +182,13 @@ const Index = () => {
           console.log("received an answer from:", data.from);
           const pc = pcsRef.current[data.from];
           pc.setRemoteDescription(data.answer);
+        }
+      );
+
+      socketRef.current?.on(
+        "chat message",
+        (msg: ChatMessage) => {
+          setChatMessages((prev) => [...prev, msg]);
         }
       );
 
@@ -346,16 +364,16 @@ const Index = () => {
   const handleJoinRoom = useCallback(
     (roomName: string) => {
       setCurrentRoomName(roomName);
-      ensureLocalStream()
-        .then(() => {
-          socketRef.current?.emit("join room", roomName);
-        })
-        .catch((error) => {
-          console.error(
-            "Failed to acquire local media before joining room",
-            error
-          );
-        });
+      setChatMessages([]);
+      // Emit join immediately; media can be acquired later
+      socketRef.current?.emit("join room", roomName);
+      // Try to prepare media in background, but don't block join flow
+      ensureLocalStream().catch((error) => {
+        console.error(
+          "Failed to acquire local media before joining room",
+          error
+        );
+      });
     },
     [ensureLocalStream]
   );
@@ -368,6 +386,9 @@ const Index = () => {
     cleanupPeerConnections();
     stopLocalStream();
     setRoomUsers([]);
+    setChatMessages([]);
+    setUploadProgress(0);
+    setReceivedFiles([]);
     setCurrentRoomName("");
     setAppState("lobby");
   }, [cleanupPeerConnections, currentRoomName, stopLocalStream]);
@@ -382,6 +403,9 @@ const Index = () => {
 
     setRoomUsers([]);
     setRooms([]);
+    setChatMessages([]);
+    setUploadProgress(0);
+    setReceivedFiles([]);
     setCurrentRoomName("");
     setUsername("");
     setAppState("username");
@@ -431,8 +455,140 @@ const Index = () => {
 
     pcsRef.current[remoteId] = pc;
 
+    // If we are the offerer, create data channel for file transfer
+    try {
+      const dc = pc.createDataChannel("file-transfer", { ordered: true });
+      attachDataChannel(remoteId, dc);
+    } catch {}
+
+    // If remote creates a channel
+    pc.ondatachannel = (ev) => {
+      const dc = ev.channel;
+      attachDataChannel(remoteId, dc);
+    };
+
     return pc;
   }
+
+  function attachDataChannel(remoteId: string, dc: RTCDataChannel) {
+    dcsRef.current[remoteId] = dc;
+    dc.onclose = () => {
+      delete dcsRef.current[remoteId];
+    };
+    dc.onmessage = (ev) => {
+      try {
+        if (typeof ev.data === "string") {
+          const msg = JSON.parse(ev.data);
+          if (msg.type === "file-meta") {
+            const key = `${remoteId}:${msg.id}`;
+            incomingRef.current[key] = { name: msg.name, size: msg.size, chunks: [], receivedBytes: 0, from: remoteId };
+          } else if (msg.type === "file-chunk") {
+            const key = `${remoteId}:${msg.id}`;
+            const entry = incomingRef.current[key];
+            if (!entry) return;
+            entry.chunks.push(msg.data as string);
+            entry.receivedBytes += msg.byteLength as number;
+          } else if (msg.type === "file-complete") {
+            const key = `${remoteId}:${msg.id}`;
+            const entry = incomingRef.current[key];
+            if (!entry) return;
+            const blob = assembleBase64Chunks(entry.chunks);
+            const url = URL.createObjectURL(blob);
+            setReceivedFiles((prev) => [...prev, { name: entry.name, size: entry.size, url }]);
+            delete incomingRef.current[key];
+          }
+        }
+      } catch (e) {
+        console.warn("Error handling data channel message", e);
+      }
+    };
+  }
+
+  function assembleBase64Chunks(chunks: string[]) {
+    const parts: BlobPart[] = [];
+    for (const b64 of chunks) {
+      const bin = atob(b64);
+      const len = bin.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) bytes[i] = bin.charCodeAt(i);
+      parts.push(bytes.buffer);
+    }
+    return new Blob(parts, { type: "application/octet-stream" });
+  }
+
+  function arrayBufferToBase64(buffer: ArrayBuffer) {
+    let binary = "";
+    const bytes = new Uint8Array(buffer);
+    const len = bytes.byteLength;
+    for (let i = 0; i < len; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary);
+  }
+
+  const sendFileToAll = useCallback(async (file: File) => {
+    const peers = Object.values(dcsRef.current);
+    if (peers.length === 0) return;
+
+    const id = `${Date.now()}`;
+    const chunkSize = 16 * 1024;
+    let offset = 0;
+
+    const waitForBuffer = async (dc: RTCDataChannel, maxBuffered = 8 * 1024 * 1024) => {
+      if (dc.bufferedAmount < maxBuffered) return;
+      return new Promise<void>((resolve) => {
+        const handler = () => {
+          if (dc.bufferedAmount < maxBuffered) {
+            dc.removeEventListener("bufferedamountlow", handler);
+            resolve();
+          }
+        };
+        try { dc.bufferedAmountLowThreshold = Math.floor(maxBuffered / 2); } catch {}
+        dc.addEventListener("bufferedamountlow", handler);
+      });
+    };
+
+    for (const dc of peers) {
+      if (dc.readyState === "open") {
+        dc.send(JSON.stringify({ type: "file-meta", id, name: file.name, size: file.size }));
+      }
+    }
+
+    while (offset < file.size) {
+      const slice = file.slice(offset, Math.min(offset + chunkSize, file.size));
+      const buf = await slice.arrayBuffer();
+      const b64 = arrayBufferToBase64(buf);
+      for (const dc of peers) {
+        if (dc.readyState === "open") {
+          await waitForBuffer(dc);
+          dc.send(JSON.stringify({ type: "file-chunk", id, data: b64, byteLength: slice.size }));
+        }
+      }
+      offset += slice.size;
+      setUploadProgress(Math.floor((offset / file.size) * 100));
+      await new Promise((r) => setTimeout(r, 0));
+    }
+
+    for (const dc of peers) {
+      if (dc.readyState === "open") {
+        await waitForBuffer(dc);
+        dc.send(JSON.stringify({ type: "file-complete", id }));
+      }
+    }
+  }, []);
+
+  const sendChatMessage = useCallback(
+    (text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed) return;
+      if (!currentRoomName || !socketRef.current) return;
+      socketRef.current.emit("chat message", {
+        roomName: currentRoomName,
+        text: trimmed,
+      });
+    },
+    [currentRoomName, username]
+  );
 
   return (
     <>
@@ -458,6 +614,11 @@ const Index = () => {
           streamRef={streamRef}
           onVideoToggle={handleVideoToggle}
           onAudioToggle={handleAudioToggle}
+          chatMessages={chatMessages}
+          onSendChat={sendChatMessage}
+          onSendFile={sendFileToAll}
+          uploadProgress={uploadProgress}
+          receivedFiles={receivedFiles}
         />
       )}
     </>

@@ -2,6 +2,7 @@
 import express from "express";
 import { Server } from 'socket.io';
 import https from 'https';
+import http from 'http';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -10,13 +11,28 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const httpsOptions = {
-  key: fs.readFileSync(path.resolve(__dirname, '../../localhost+1-key.pem')),
-  cert: fs.readFileSync(path.resolve(__dirname, '../../localhost+1.pem'))
-};
+const keyPath = path.resolve(__dirname, '../../localhost+1-key.pem');
+const certPath = path.resolve(__dirname, '../../localhost+1.pem');
 
 const app = express();
-const server = https.createServer(httpsOptions, app);
+
+let isHttps = false;
+let server: https.Server | http.Server;
+try {
+  if (fs.existsSync(keyPath) && fs.existsSync(certPath)) {
+    const httpsOptions = {
+      key: fs.readFileSync(keyPath),
+      cert: fs.readFileSync(certPath),
+    };
+    server = https.createServer(httpsOptions, app);
+    isHttps = true;
+  } else {
+    server = http.createServer(app);
+  }
+} catch {
+  server = http.createServer(app);
+}
+
 const io = new Server(server, {
   cors: {
     origin: "*",
@@ -160,6 +176,16 @@ io.of("/").on("connection", async (socket) => {
     });
   });
 
+  socket.on("chat message", async (data: { roomName: string, text: string }) => {
+    const payload = {
+      id: socket.id,
+      username: socket.handshake.auth.username,
+      text: data.text,
+      ts: Date.now(),
+    };
+    io.to(data.roomName).emit("chat message", payload);
+  });
+
   socket.on("leave room", async (roomName: string) => {
     if (!roomName) {
       return;
@@ -189,5 +215,6 @@ io.of("/").on("connection", async (socket) => {
 
 
 server.listen(3000, '0.0.0.0', () => {
-  console.log('server running at https://10.0.11.158:3000');
+  const proto = isHttps ? 'https' : 'http';
+  console.log(`server running at ${proto}://10.0.11.158:3000`);
 });
