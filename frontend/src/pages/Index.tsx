@@ -38,15 +38,31 @@ const Index = () => {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [roomUsers, setRoomUsers] = useState<RoomUser[]>([]);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [joinRoomError, setJoinRoomError] = useState<string>("");
+  const [pendingJoinRoom, setPendingJoinRoom] = useState<string | null>(null);
 
   const socketRef = useRef<Socket>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const pcsRef = useRef<Record<string, RTCPeerConnection>>({});
   const dcsRef = useRef<Record<string, RTCDataChannel>>({});
-  const incomingRef = useRef<Record<string, { name: string; size: number; chunks: string[]; receivedBytes: number; from: string }>>({});
+  const currentRoomNameRef = useRef<string>("");
+  const incomingRef = useRef<
+    Record<
+      string,
+      {
+        name: string;
+        size: number;
+        chunks: string[];
+        receivedBytes: number;
+        from: string;
+      }
+    >
+  >({});
 
   const [uploadProgress, setUploadProgress] = useState<number>(0);
-  const [receivedFiles, setReceivedFiles] = useState<Array<{ name: string; size: number; url: string }>>([]);
+  const [receivedFiles, setReceivedFiles] = useState<
+    Array<{ name: string; size: number; url: string }>
+  >([]);
 
   const ensureLocalStream = useCallback(async () => {
     if (streamRef.current) {
@@ -68,17 +84,32 @@ const Index = () => {
   useEffect(() => {
     const startListening = async () => {
       console.log("activating socket!");
-      const SIGNAL_URL =
-        (import.meta as any).env?.VITE_SIGNAL_URL ?? `http://${window.location.hostname}:3000`;
+      const SIGNAL_URL = "https://claire-untravelling-ira.ngrok-free.dev";
+      // (import.meta as any).env?.VITE_SIGNAL_URL ?? `https://${window.location.hostname}:3000`;
       socketRef.current = io(SIGNAL_URL, {
         auth: {
           username: username,
+        },
+        extraHeaders: {
+          "ngrok-skip-browser-warning": "true",
         },
       });
 
       socketRef.current?.on("fetch active rooms", (roomsStr) => {
         const rooms = JSON.parse(roomsStr) as Room[];
         setRooms(rooms);
+      });
+
+      socketRef.current?.on("join room error", (data: { message: string }) => {
+        console.error("Join room error:", data.message);
+        setJoinRoomError(data.message);
+        setPendingJoinRoom((pendingRoom) => {
+          // Show alert if there was an error
+          if (pendingRoom) {
+            alert(`Failed to join room: ${data.message}`);
+          }
+          return null;
+        });
       });
 
       socketRef.current?.on("add new room user", (userStr) => {
@@ -110,6 +141,9 @@ const Index = () => {
           isVideoEnabled?: boolean;
           isAudioEnabled?: boolean;
         }>;
+        // Clear join error on successful join
+        setJoinRoomError("");
+        setPendingJoinRoom(null);
         setRoomUsers((_) => {
           return [
             ...users.map((user) => ({
@@ -185,12 +219,9 @@ const Index = () => {
         }
       );
 
-      socketRef.current?.on(
-        "chat message",
-        (msg: ChatMessage) => {
-          setChatMessages((prev) => [...prev, msg]);
-        }
-      );
+      socketRef.current?.on("chat message", (msg: ChatMessage) => {
+        setChatMessages((prev) => [...prev, msg]);
+      });
 
       socketRef.current?.on("candidate", async ({ from, candidate }) => {
         const pc = pcsRef.current[from];
@@ -279,14 +310,14 @@ const Index = () => {
 
   const broadcastMediaState = useCallback(
     (kind: "video" | "audio", enabled: boolean) => {
-      if (!socketRef.current || !currentRoomName) return;
+      if (!socketRef.current || !currentRoomNameRef.current) return;
       socketRef.current.emit("media state change", {
-        roomName: currentRoomName,
+        roomName: currentRoomNameRef.current,
         kind,
         enabled,
       });
     },
-    [currentRoomName]
+    []
   );
 
   const handleVideoToggle = useCallback(
@@ -361,12 +392,50 @@ const Index = () => {
     setAppState("lobby");
   }, []);
 
-  const handleJoinRoom = useCallback(
-    (roomName: string) => {
+  const handleCreateRoom = useCallback(
+    (roomName: string, password: string) => {
+      if (!socketRef.current || !socketRef.current.connected) {
+        console.error("Socket not connected when trying to create room");
+        alert("Connection error. Please try again.");
+        return;
+      }
+
+      console.log("Creating room:", roomName);
+      currentRoomNameRef.current = roomName;
       setCurrentRoomName(roomName);
       setChatMessages([]);
-      // Emit join immediately; media can be acquired later
-      socketRef.current?.emit("join room", roomName);
+      setJoinRoomError("");
+      setPendingJoinRoom(roomName);
+
+      // Emit create room with password
+      socketRef.current.emit("create room", {
+        roomName: roomName,
+        password: password,
+      });
+
+      // Try to prepare media in background, but don't block join flow
+      ensureLocalStream().catch((error) => {
+        console.error(
+          "Failed to acquire local media before creating room",
+          error
+        );
+      });
+    },
+    [ensureLocalStream]
+  );
+
+  const handleJoinRoom = useCallback(
+    (roomName: string, password: string) => {
+      currentRoomNameRef.current = roomName;
+      setCurrentRoomName(roomName);
+      setChatMessages([]);
+      setJoinRoomError("");
+      setPendingJoinRoom(roomName);
+      // Emit join with password
+      socketRef.current?.emit("join room", {
+        roomName: roomName,
+        password: password,
+      });
       // Try to prepare media in background, but don't block join flow
       ensureLocalStream().catch((error) => {
         console.error(
@@ -379,8 +448,8 @@ const Index = () => {
   );
 
   const handleLeaveRoom = useCallback(() => {
-    if (currentRoomName) {
-      socketRef.current?.emit("leave room", currentRoomName);
+    if (currentRoomNameRef.current) {
+      socketRef.current?.emit("leave room", currentRoomNameRef.current);
     }
 
     cleanupPeerConnections();
@@ -389,13 +458,16 @@ const Index = () => {
     setChatMessages([]);
     setUploadProgress(0);
     setReceivedFiles([]);
+    currentRoomNameRef.current = "";
     setCurrentRoomName("");
+    setJoinRoomError("");
+    setPendingJoinRoom(null);
     setAppState("lobby");
-  }, [cleanupPeerConnections, currentRoomName, stopLocalStream]);
+  }, [cleanupPeerConnections, stopLocalStream]);
 
   const handleLogout = useCallback(() => {
-    if (currentRoomName) {
-      socketRef.current?.emit("leave room", currentRoomName);
+    if (currentRoomNameRef.current) {
+      socketRef.current?.emit("leave room", currentRoomNameRef.current);
     }
 
     cleanupPeerConnections();
@@ -406,15 +478,18 @@ const Index = () => {
     setChatMessages([]);
     setUploadProgress(0);
     setReceivedFiles([]);
+    currentRoomNameRef.current = "";
     setCurrentRoomName("");
     setUsername("");
+    setJoinRoomError("");
+    setPendingJoinRoom(null);
     setAppState("username");
 
     if (socketRef.current) {
       socketRef.current.disconnect();
       socketRef.current = null;
     }
-  }, [cleanupPeerConnections, currentRoomName, stopLocalStream]);
+  }, [cleanupPeerConnections, stopLocalStream]);
 
   function createPC(remoteId: string) {
     const pc = new RTCPeerConnection(config);
@@ -459,7 +534,9 @@ const Index = () => {
     try {
       const dc = pc.createDataChannel("file-transfer", { ordered: true });
       attachDataChannel(remoteId, dc);
-    } catch {}
+    } catch (error) {
+      console.error("Error creating data channel", error);
+    }
 
     // If remote creates a channel
     pc.ondatachannel = (ev) => {
@@ -481,7 +558,13 @@ const Index = () => {
           const msg = JSON.parse(ev.data);
           if (msg.type === "file-meta") {
             const key = `${remoteId}:${msg.id}`;
-            incomingRef.current[key] = { name: msg.name, size: msg.size, chunks: [], receivedBytes: 0, from: remoteId };
+            incomingRef.current[key] = {
+              name: msg.name,
+              size: msg.size,
+              chunks: [],
+              receivedBytes: 0,
+              from: remoteId,
+            };
           } else if (msg.type === "file-chunk") {
             const key = `${remoteId}:${msg.id}`;
             const entry = incomingRef.current[key];
@@ -494,7 +577,10 @@ const Index = () => {
             if (!entry) return;
             const blob = assembleBase64Chunks(entry.chunks);
             const url = URL.createObjectURL(blob);
-            setReceivedFiles((prev) => [...prev, { name: entry.name, size: entry.size, url }]);
+            setReceivedFiles((prev) => [
+              ...prev,
+              { name: entry.name, size: entry.size, url },
+            ]);
             delete incomingRef.current[key];
           }
         }
@@ -534,7 +620,10 @@ const Index = () => {
     const chunkSize = 16 * 1024;
     let offset = 0;
 
-    const waitForBuffer = async (dc: RTCDataChannel, maxBuffered = 8 * 1024 * 1024) => {
+    const waitForBuffer = async (
+      dc: RTCDataChannel,
+      maxBuffered = 8 * 1024 * 1024
+    ) => {
       if (dc.bufferedAmount < maxBuffered) return;
       return new Promise<void>((resolve) => {
         const handler = () => {
@@ -543,14 +632,25 @@ const Index = () => {
             resolve();
           }
         };
-        try { dc.bufferedAmountLowThreshold = Math.floor(maxBuffered / 2); } catch {}
+        try {
+          dc.bufferedAmountLowThreshold = Math.floor(maxBuffered / 2);
+        } catch (error) {
+          console.error("Error setting buffered amount low threshold", error);
+        }
         dc.addEventListener("bufferedamountlow", handler);
       });
     };
 
     for (const dc of peers) {
       if (dc.readyState === "open") {
-        dc.send(JSON.stringify({ type: "file-meta", id, name: file.name, size: file.size }));
+        dc.send(
+          JSON.stringify({
+            type: "file-meta",
+            id,
+            name: file.name,
+            size: file.size,
+          })
+        );
       }
     }
 
@@ -561,7 +661,14 @@ const Index = () => {
       for (const dc of peers) {
         if (dc.readyState === "open") {
           await waitForBuffer(dc);
-          dc.send(JSON.stringify({ type: "file-chunk", id, data: b64, byteLength: slice.size }));
+          dc.send(
+            JSON.stringify({
+              type: "file-chunk",
+              id,
+              data: b64,
+              byteLength: slice.size,
+            })
+          );
         }
       }
       offset += slice.size;
@@ -577,18 +684,15 @@ const Index = () => {
     }
   }, []);
 
-  const sendChatMessage = useCallback(
-    (text: string) => {
-      const trimmed = text.trim();
-      if (!trimmed) return;
-      if (!currentRoomName || !socketRef.current) return;
-      socketRef.current.emit("chat message", {
-        roomName: currentRoomName,
-        text: trimmed,
-      });
-    },
-    [currentRoomName, username]
-  );
+  const sendChatMessage = useCallback((text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    if (!currentRoomNameRef.current || !socketRef.current) return;
+    socketRef.current.emit("chat message", {
+      roomName: currentRoomNameRef.current,
+      text: trimmed,
+    });
+  }, []);
 
   return (
     <>
@@ -600,8 +704,11 @@ const Index = () => {
         <RoomLobby
           username={username}
           onJoinRoom={handleJoinRoom}
+          onCreateRoom={handleCreateRoom}
           onLogout={handleLogout}
           rooms={rooms}
+          joinRoomError={joinRoomError}
+          pendingJoinRoom={pendingJoinRoom}
         />
       )}
 

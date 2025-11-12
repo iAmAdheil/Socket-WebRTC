@@ -40,6 +40,9 @@ const io = new Server(server, {
   }
 });
 
+// Store room passwords: roomName -> password
+const roomPasswords = new Map<string, string>();
+
 export interface Room {
   id: string;
   name: string;
@@ -99,7 +102,21 @@ io.of("/").on("connection", async (socket) => {
     audioEnabled: true
   };
 
-  socket.on("join room", async (roomName: string) => {
+  socket.on("join room", async (data: { roomName: string; password?: string }) => {
+    const { roomName, password } = data;
+    const roomPassword = roomPasswords.get(roomName);
+    
+    // All rooms require a password - validate it
+    if (!roomPassword) {
+      socket.emit("join room error", { message: "Room not found or invalid" });
+      return;
+    }
+    
+    if (!password || password !== roomPassword) {
+      socket.emit("join room error", { message: "Incorrect password" });
+      return;
+    }
+
     await socket.join(roomName);
     const rooms = await getAllRooms();
     io.except(roomName).emit("fetch active rooms", JSON.stringify(rooms));
@@ -134,6 +151,59 @@ io.of("/").on("connection", async (socket) => {
       }
     }
 
+    socket.emit("fetch room users", JSON.stringify(clientsWithUsernames));
+  });
+
+  socket.on("create room", async (data: { roomName: string; password?: string }) => {
+    const { roomName, password } = data;
+    console.log("Create room request:", { roomName, hasPassword: !!password, socketId: socket.id });
+    
+    // Password is required for all rooms
+    if (!password) {
+      console.log("Create room failed: Password is required");
+      socket.emit("join room error", { message: "Password is required" });
+      return;
+    }
+    
+    // Store password
+    roomPasswords.set(roomName, password);
+    console.log("Stored password for room:", roomName);
+    
+    // Join the room
+    await socket.join(roomName);
+    console.log("Socket joined room:", roomName);
+    
+    const rooms = await getAllRooms();
+    io.except(roomName).emit("fetch active rooms", JSON.stringify(rooms));
+    // Also emit to the room creator so they see the updated room list
+    socket.emit("fetch active rooms", JSON.stringify(rooms));
+
+    const newUser: RoomUser = {
+      id: socket.id,
+      username: socket.handshake.auth.username,
+      isVideoEnabled: socket.data.mediaState.videoEnabled ?? true,
+      isAudioEnabled: socket.data.mediaState.audioEnabled ?? true
+    };
+    io.to(roomName).except(socket.id).emit("add new room user", JSON.stringify(newUser));
+
+    const clientIDs = io.sockets.adapter.rooms.get(roomName) || new Set();
+    console.log("Room clients:", Array.from(clientIDs));
+    const clientsWithUsernames = [];
+    for (const clientID of clientIDs) {
+      if (clientID === socket.id) continue;
+      const s = io.sockets.sockets.get(clientID);
+      if (s) {
+        const username = s.handshake.auth.username;
+        clientsWithUsernames.push({
+          id: clientID,
+          username: username,
+          isVideoEnabled: s.data.mediaState?.videoEnabled ?? true,
+          isAudioEnabled: s.data.mediaState?.audioEnabled ?? true,
+        });
+      }
+    }
+
+    console.log("Emitting fetch room users to socket:", socket.id, "with users:", clientsWithUsernames);
     socket.emit("fetch room users", JSON.stringify(clientsWithUsernames));
   });
 
@@ -194,6 +264,12 @@ io.of("/").on("connection", async (socket) => {
     if (socket.rooms.has(roomName)) {
       socket.to(roomName).emit("remove room user", socket.id);
       await socket.leave(roomName);
+      
+      // Clean up password if room is empty
+      const room = io.sockets.adapter.rooms.get(roomName);
+      if (!room || room.size === 0) {
+        roomPasswords.delete(roomName);
+      }
     }
 
     const rooms = await getAllRooms();
@@ -208,6 +284,14 @@ io.of("/").on("connection", async (socket) => {
   });
 
   socket.on("disconnect", async () => {
+    // Clean up passwords for empty rooms
+    for (const [roomName, password] of roomPasswords.entries()) {
+      const room = io.sockets.adapter.rooms.get(roomName);
+      if (!room || room.size === 0) {
+        roomPasswords.delete(roomName);
+      }
+    }
+    
     const rooms = await getAllRooms();
     io.emit("fetch active rooms", JSON.stringify(rooms));
   });

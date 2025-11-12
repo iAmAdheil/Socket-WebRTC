@@ -16,30 +16,41 @@ import ThemeToggle from "./ThemeToggle";
 
 interface RoomLobbyProps {
   username: string;
-  onJoinRoom: (roomName: string) => void;
+  onJoinRoom: (roomName: string, password: string) => void;
+  onCreateRoom: (roomName: string, password: string) => void;
   onLogout: () => void;
   rooms: Room[];
+  joinRoomError?: string;
+  pendingJoinRoom?: string | null;
 }
 
 const RoomLobby = ({
   username,
   onJoinRoom,
+  onCreateRoom,
   onLogout,
   rooms,
+  joinRoomError,
+  pendingJoinRoom,
 }: RoomLobbyProps) => {
   const [newRoomName, setNewRoomName] = useState("");
+  const [newRoomPassword, setNewRoomPassword] = useState("");
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
 
   const handleCreateRoom = (e: React.FormEvent) => {
     e.preventDefault();
     const roomName = newRoomName.trim();
+    const password = newRoomPassword.trim();
     const exists = rooms.some((room) => room.name === roomName);
     if (exists) {
       alert("Room already exists");
+    } else if (!password) {
+      alert("Password is required");
     } else {
       console.log("Creating room:", newRoomName);
-      onJoinRoom(roomName);
+      onCreateRoom(roomName, password);
       setNewRoomName("");
+      setNewRoomPassword("");
       setCreateDialogOpen(false);
     }
   };
@@ -99,20 +110,30 @@ const RoomLobby = ({
               <DialogHeader>
                 <DialogTitle>Create Room</DialogTitle>
                 <DialogDescription>
-                  Enter a name for your new video chat room
+                  Enter a name and password for your new video chat room
                 </DialogDescription>
               </DialogHeader>
               <form onSubmit={handleCreateRoom} className="space-y-4">
-                <Input
-                  placeholder="Room name"
-                  value={newRoomName}
-                  onChange={(e) => setNewRoomName(e.target.value)}
-                  autoFocus
-                />
+                <div className="space-y-2">
+                  <Input
+                    placeholder="Room name"
+                    value={newRoomName}
+                    onChange={(e) => setNewRoomName(e.target.value)}
+                    autoFocus
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Input
+                    type="password"
+                    placeholder="Password"
+                    value={newRoomPassword}
+                    onChange={(e) => setNewRoomPassword(e.target.value)}
+                  />
+                </div>
                 <Button
                   type="submit"
                   className="w-full"
-                  disabled={!newRoomName.trim()}
+                  disabled={!newRoomName.trim() || !newRoomPassword.trim()}
                 >
                   Create Room
                 </Button>
@@ -129,7 +150,8 @@ const RoomLobby = ({
                 key={room.name}
                 roomName={room.name}
                 activeUsers={room.activeUsers}
-                onJoin={() => onJoinRoom(room.name)}
+                onJoin={(password) => onJoinRoom(room.name, password)}
+                joinError={pendingJoinRoom === room.name ? joinRoomError : undefined}
               />
             ))}
           </div>
