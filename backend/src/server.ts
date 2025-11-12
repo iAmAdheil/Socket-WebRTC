@@ -6,15 +6,28 @@ import http from 'http';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import dotenv from 'dotenv';
+import nodemailer from 'nodemailer';
 
 // ES module equivalent of __dirname
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+dotenv.config();
+
 const keyPath = path.resolve(__dirname, '../../localhost+1-key.pem');
 const certPath = path.resolve(__dirname, '../../localhost+1.pem');
 
 const app = express();
+
+app.use(express.json());
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  if (req.method === 'OPTIONS') return res.sendStatus(200);
+  next();
+});
 
 let isHttps = false;
 let server: https.Server | http.Server;
@@ -39,6 +52,26 @@ const io = new Server(server, {
     methods: ["GET", "POST"]
   }
 });
+
+async function getTransporter() {
+  if (process.env.SMTP_HOST) {
+    return nodemailer.createTransport({
+      host: process.env.SMTP_HOST,
+      port: Number(process.env.SMTP_PORT) || 587,
+      secure: process.env.SMTP_SECURE === 'true' || false,
+      auth: (process.env.SMTP_USER && process.env.SMTP_PASS)
+        ? { user: process.env.SMTP_USER as string, pass: process.env.SMTP_PASS as string }
+        : undefined,
+    });
+  }
+  const testAccount = await nodemailer.createTestAccount();
+  return nodemailer.createTransport({
+    host: testAccount.smtp.host,
+    port: testAccount.smtp.port,
+    secure: testAccount.smtp.secure,
+    auth: { user: testAccount.user, pass: testAccount.pass },
+  });
+}
 
 export interface Room {
   id: string;
@@ -89,6 +122,24 @@ app.get('/', (req, res) => {
   res.json({
     msg: "Hello World"
   })
+});
+
+app.post('/mail/send', async (req, res) => {
+  try {
+    const { to, subject, text, html } = req.body || {};
+    if (!to || !subject || (!text && !html)) {
+      return res.status(400).json({ error: 'Missing required fields: to, subject, and text or html' });
+    }
+
+    const transporter = await getTransporter();
+    const isTest = !process.env.SMTP_HOST;
+    const from = process.env.SMTP_FROM || process.env.SMTP_USER || 'no-reply@example.com';
+    const info = await transporter.sendMail({ from, to, subject, text, html });
+    const previewUrl = isTest ? nodemailer.getTestMessageUrl(info) : undefined;
+    res.json({ ok: true, messageId: info.messageId, previewUrl });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err?.message || 'Failed to send email' });
+  }
 });
 
 io.of("/").on("connection", async (socket) => {
