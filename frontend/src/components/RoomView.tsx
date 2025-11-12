@@ -57,6 +57,12 @@ const RoomView = ({
   const [chatOpen, setChatOpen] = useState(false);
   const [chatInput, setChatInput] = useState("");
   const [fileToSend, setFileToSend] = useState<File | null>(null);
+  const [mailTo, setMailTo] = useState("");
+  const [mailSubject, setMailSubject] = useState("");
+  const [mailBody, setMailBody] = useState("");
+  const [sendingMail, setSendingMail] = useState(false);
+  const [mailNotice, setMailNotice] = useState<string | null>(null);
+  const [emailOpen, setEmailOpen] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
@@ -114,6 +120,35 @@ const RoomView = ({
     if (!fileToSend) return;
     void onSendFile(fileToSend);
   }, [fileToSend, onSendFile]);
+
+  const handleSendEmail = useCallback(async () => {
+    const to = mailTo.trim();
+    const subject = mailSubject.trim();
+    const text = mailBody.trim();
+    if (!to || !subject || !text) return;
+    setSendingMail(true);
+    setMailNotice(null);
+    try {
+      const base = (import.meta as any).env?.VITE_SIGNAL_URL ?? `http://${window.location.hostname}:3000`;
+      const resp = await fetch(`${base}/mail/send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ to, subject, text })
+      });
+      const data = await resp.json();
+      if (!resp.ok || !data?.ok) {
+        throw new Error(data?.error || "Failed to send email");
+      }
+      setMailNotice(data?.previewUrl ? `Sent (preview): ${data.previewUrl}` : "Email sent");
+      setMailTo("");
+      setMailSubject("");
+      setMailBody("");
+    } catch (e: any) {
+      setMailNotice(e?.message || "Failed to send email");
+    } finally {
+      setSendingMail(false);
+    }
+  }, [mailTo, mailSubject, mailBody]);
 
   return (
     <div className="h-screen bg-background flex flex-col">
@@ -198,6 +233,40 @@ const RoomView = ({
                           <Send className="w-4 h-4" />
                         </Button>
                       </div>
+                    </div>
+                  </div>
+                </SheetContent>
+              </Sheet>
+              <Sheet open={emailOpen} onOpenChange={setEmailOpen}>
+                <SheetTrigger asChild>
+                  <Button variant="outline" size="sm" className="gap-2">
+                    <Send className="w-4 h-4" />
+                    <span className="hidden sm:inline">Email</span>
+                  </Button>
+                </SheetTrigger>
+                <SheetContent side="right" className="w-full sm:max-w-md p-0">
+                  <div className="flex flex-col h-full">
+                    <div className="p-4 border-b">
+                      <SheetHeader>
+                        <SheetTitle>Send email</SheetTitle>
+                      </SheetHeader>
+                    </div>
+                    <div className="flex-1 p-4 space-y-2">
+                      <Input placeholder="Recipient email" value={mailTo} onChange={(e) => setMailTo(e.target.value)} />
+                      <Input placeholder="Subject" value={mailSubject} onChange={(e) => setMailSubject(e.target.value)} />
+                      <textarea
+                        className="w-full border rounded-md p-2 text-sm bg-background"
+                        rows={8}
+                        placeholder="Message"
+                        value={mailBody}
+                        onChange={(e) => setMailBody(e.target.value)}
+                      />
+                    </div>
+                    <div className="p-3 border-t flex items-center gap-2">
+                      <Button onClick={handleSendEmail} disabled={sendingMail || !mailTo.trim() || !mailSubject.trim() || !mailBody.trim()}>
+                        {sendingMail ? "Sending..." : "Send email"}
+                      </Button>
+                      {mailNotice && <div className="text-xs text-muted-foreground truncate" title={mailNotice}>{mailNotice}</div>}
                     </div>
                   </div>
                 </SheetContent>
