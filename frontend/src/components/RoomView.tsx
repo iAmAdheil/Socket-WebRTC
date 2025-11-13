@@ -20,7 +20,13 @@ import { Avatar, AvatarFallback } from "./ui/avatar";
 import { RoomUser, type ChatMessage } from "@/pages/Index";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import { Progress } from "@/components/ui/progress";
 
 interface RoomViewProps {
@@ -105,10 +111,13 @@ const RoomView = ({
     setChatInput("");
   }, [chatInput, onSendChat]);
 
-  const handleFilePick = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0] ?? null;
-    setFileToSend(f);
-  }, []);
+  const handleFilePick = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const f = e.target.files?.[0] ?? null;
+      setFileToSend(f);
+    },
+    []
+  );
 
   const handleSendFile = useCallback(() => {
     if (!fileToSend) return;
@@ -129,16 +138,17 @@ const RoomView = ({
                 <h1 className="text-base font-semibold">{roomName}</h1>
                 <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                   <Users className="w-3 h-3" />
-                  {participants.length} {participants.length === 1 ? "person" : "people"}
+                  {participants.length}{" "}
+                  {participants.length === 1 ? "person" : "people"}
                 </div>
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <ThemeToggle />
-              <Button variant="ghost" size="sm" className="gap-2">
+              {/* <ThemeToggle /> */}
+              {/* <Button variant="ghost" size="sm" className="gap-2">
                 <Settings className="w-4 h-4" />
                 <span className="hidden sm:inline">Settings</span>
-              </Button>
+              </Button> */}
               <Sheet open={chatOpen} onOpenChange={setChatOpen}>
                 <SheetTrigger asChild>
                   <Button variant="ghost" size="sm" className="gap-2">
@@ -156,23 +166,47 @@ const RoomView = ({
                     <ScrollArea className="flex-1 p-4">
                       <div className="space-y-3">
                         {chatMessages.map((m) => (
-                          <div key={`${m.ts}-${m.id}`} className="flex flex-col">
+                          <div
+                            key={`${m.ts}-${m.id}`}
+                            className="flex flex-col"
+                          >
                             <div className="text-xs text-muted-foreground">
-                              {m.username} • {new Date(m.ts).toLocaleTimeString()}
+                              {m.username} •{" "}
+                              {new Date(m.ts).toLocaleTimeString()}
                             </div>
                             <div className="text-sm break-words">{m.text}</div>
                           </div>
                         ))}
                         {chatMessages.length === 0 && (
-                          <div className="text-sm text-muted-foreground">No messages yet</div>
+                          <div className="text-sm text-muted-foreground">
+                            No messages yet
+                          </div>
                         )}
                         {receivedFiles.length > 0 && (
                           <div className="pt-4 space-y-2">
-                            <div className="text-xs font-medium text-muted-foreground">Received files</div>
+                            <div className="text-xs font-medium text-muted-foreground">
+                              Received files
+                            </div>
                             {receivedFiles.map((f, idx) => (
-                              <div key={`${f.url}-${idx}`} className="flex items-center justify-between gap-2 text-sm">
-                                <div className="truncate" title={`${f.name} • ${(f.size/1024/1024).toFixed(2)} MB`}>{f.name}</div>
-                                <a href={f.url} download={f.name} className="inline-flex items-center gap-1 text-primary hover:underline">
+                              <div
+                                key={`${f.url}-${idx}`}
+                                className="flex items-center justify-between gap-2 text-sm"
+                              >
+                                <div
+                                  className="truncate"
+                                  title={`${f.name} • ${(
+                                    f.size /
+                                    1024 /
+                                    1024
+                                  ).toFixed(2)} MB`}
+                                >
+                                  {f.name}
+                                </div>
+                                <a
+                                  href={f.url}
+                                  download={f.name}
+                                  className="inline-flex items-center gap-1 text-primary hover:underline"
+                                >
                                   <Download className="w-4 h-4" /> Download
                                 </a>
                               </div>
@@ -194,7 +228,10 @@ const RoomView = ({
                             }
                           }}
                         />
-                        <Button onClick={handleSend} disabled={!chatInput.trim()}>
+                        <Button
+                          onClick={handleSend}
+                          disabled={!chatInput.trim()}
+                        >
                           <Send className="w-4 h-4" />
                         </Button>
                       </div>
@@ -203,14 +240,28 @@ const RoomView = ({
                 </SheetContent>
               </Sheet>
               <div className="flex items-center gap-2">
-                <input id="file-input" type="file" className="hidden" onChange={handleFilePick} />
+                <input
+                  id="file-input"
+                  type="file"
+                  className="hidden"
+                  onChange={handleFilePick}
+                />
                 <Button asChild variant="outline" size="sm" className="gap-2">
                   <label htmlFor="file-input" className="cursor-pointer">
-                    <span className="inline-flex items-center gap-2"><Paperclip className="w-4 h-4" /> Choose file</span>
+                    <span className="inline-flex items-center gap-2">
+                      <Paperclip className="w-4 h-4" />{" "}
+                      <p className="hidden sm:inline">Choose file</p>
+                    </span>
                   </label>
                 </Button>
-                <Button size="sm" onClick={handleSendFile} disabled={!fileToSend} className="gap-2">
-                  <Send className="w-4 h-4" /> Send
+                <Button
+                  size="sm"
+                  onClick={handleSendFile}
+                  disabled={!fileToSend}
+                  className="gap-2"
+                >
+                  <Send className="w-4 h-4" />
+                  <p className="hidden sm:inline">Send</p>
                 </Button>
               </div>
             </div>
@@ -311,14 +362,22 @@ const RoomView = ({
                   </div>
                 </div>
                 <div className="absolute bottom-3 right-3 flex gap-2">
-                  <div className={`w-8 h-8 ${p.isAudioEnabled ? "bg-background/80" : "bg-destructive"} backdrop-blur-sm rounded-lg flex items-center justify-center`}>
+                  <div
+                    className={`w-8 h-8 ${
+                      p.isAudioEnabled ? "bg-background/80" : "bg-destructive"
+                    } backdrop-blur-sm rounded-lg flex items-center justify-center`}
+                  >
                     {p.isAudioEnabled ? (
                       <Mic className="w-4 h-4" />
                     ) : (
                       <MicOff className="w-4 h-4" />
                     )}
                   </div>
-                  <div className={`w-8 h-8 ${p.isVideoEnabled ? "bg-background/80" : "bg-destructive"} backdrop-blur-sm rounded-lg flex items-center justify-center`}>
+                  <div
+                    className={`w-8 h-8 ${
+                      p.isVideoEnabled ? "bg-background/80" : "bg-destructive"
+                    } backdrop-blur-sm rounded-lg flex items-center justify-center`}
+                  >
                     {p.isVideoEnabled ? (
                       <Video className="w-4 h-4" />
                     ) : (
@@ -382,7 +441,10 @@ const RoomView = ({
           </div>
           {fileToSend && (
             <div className="mt-4">
-              <div className="text-xs text-muted-foreground mb-2">Sending: {fileToSend.name} ({(fileToSend.size/1024/1024).toFixed(2)} MB)</div>
+              <div className="text-xs text-muted-foreground mb-2">
+                Sending: {fileToSend.name} (
+                {(fileToSend.size / 1024 / 1024).toFixed(2)} MB)
+              </div>
               <Progress value={uploadProgress} />
             </div>
           )}

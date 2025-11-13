@@ -10,6 +10,7 @@ type AppState = "username" | "lobby" | "room";
 export interface Room {
   id: string;
   name: string;
+  hasPassword: boolean;
   activeUsers: {
     id: string;
     username: string;
@@ -38,15 +39,30 @@ const Index = () => {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [roomUsers, setRoomUsers] = useState<RoomUser[]>([]);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [pendingRoomJoin, setPendingRoomJoin] = useState<{ roomName: string; password?: string } | null>(null);
 
   const socketRef = useRef<Socket>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const pcsRef = useRef<Record<string, RTCPeerConnection>>({});
   const dcsRef = useRef<Record<string, RTCDataChannel>>({});
-  const incomingRef = useRef<Record<string, { name: string; size: number; chunks: string[]; receivedBytes: number; from: string }>>({});
+  const incomingRef = useRef<
+    Record<
+      string,
+      {
+        name: string;
+        size: number;
+        chunks: string[];
+        receivedBytes: number;
+        from: string;
+      }
+    >
+  >({});
 
   const [uploadProgress, setUploadProgress] = useState<number>(0);
-  const [receivedFiles, setReceivedFiles] = useState<Array<{ name: string; size: number; url: string }>>([]);
+  const [receivedFiles, setReceivedFiles] = useState<
+    Array<{ name: string; size: number; url: string }>
+  >([]);
 
   const ensureLocalStream = useCallback(async () => {
     if (streamRef.current) {
@@ -68,17 +84,27 @@ const Index = () => {
   useEffect(() => {
     const startListening = async () => {
       console.log("activating socket!");
-      const SIGNAL_URL =
-        (import.meta as any).env?.VITE_SIGNAL_URL ?? `http://${window.location.hostname}:3000`;
+
+      const SIGNAL_URL = "https://claire-untravelling-ira.ngrok-free.dev";
+      // const SIGNAL_URL =
+      //   (import.meta as any).env?.VITE_SIGNAL_URL ?? `http://${window.location.hostname}:3000`;
       socketRef.current = io(SIGNAL_URL, {
         auth: {
           username: username,
+        },
+        extraHeaders: {
+          "ngrok-skip-browser-warning": "true",
         },
       });
 
       socketRef.current?.on("fetch active rooms", (roomsStr) => {
         const rooms = JSON.parse(roomsStr) as Room[];
         setRooms(rooms);
+      });
+
+      socketRef.current?.on("join room error", (data: { message: string }) => {
+        setPasswordError(data.message);
+        setPendingRoomJoin(null);
       });
 
       socketRef.current?.on("add new room user", (userStr) => {
@@ -185,12 +211,9 @@ const Index = () => {
         }
       );
 
-      socketRef.current?.on(
-        "chat message",
-        (msg: ChatMessage) => {
-          setChatMessages((prev) => [...prev, msg]);
-        }
-      );
+      socketRef.current?.on("chat message", (msg: ChatMessage) => {
+        setChatMessages((prev) => [...prev, msg]);
+      });
 
       socketRef.current?.on("candidate", async ({ from, candidate }) => {
         const pc = pcsRef.current[from];
@@ -362,15 +385,34 @@ const Index = () => {
   }, []);
 
   const handleJoinRoom = useCallback(
-    (roomName: string) => {
+    (roomName: string, password?: string) => {
       setCurrentRoomName(roomName);
       setChatMessages([]);
-      // Emit join immediately; media can be acquired later
-      socketRef.current?.emit("join room", roomName);
+      setPasswordError(null);
+      // Emit join with password if provided
+      socketRef.current?.emit("join room", { roomName, password });
       // Try to prepare media in background, but don't block join flow
       ensureLocalStream().catch((error) => {
         console.error(
           "Failed to acquire local media before joining room",
+          error
+        );
+      });
+    },
+    [ensureLocalStream]
+  );
+
+  const handleCreateRoom = useCallback(
+    (roomName: string, password?: string) => {
+      setCurrentRoomName(roomName);
+      setChatMessages([]);
+      setPasswordError(null);
+      // Emit create room with password if provided
+      socketRef.current?.emit("create room", { roomName, password });
+      // Try to prepare media in background, but don't block join flow
+      ensureLocalStream().catch((error) => {
+        console.error(
+          "Failed to acquire local media before creating room",
           error
         );
       });
@@ -459,7 +501,9 @@ const Index = () => {
     try {
       const dc = pc.createDataChannel("file-transfer", { ordered: true });
       attachDataChannel(remoteId, dc);
-    } catch {}
+    } catch (e) {
+      console.warn("Error creating data channel", e);
+    }
 
     // If remote creates a channel
     pc.ondatachannel = (ev) => {
@@ -481,7 +525,13 @@ const Index = () => {
           const msg = JSON.parse(ev.data);
           if (msg.type === "file-meta") {
             const key = `${remoteId}:${msg.id}`;
-            incomingRef.current[key] = { name: msg.name, size: msg.size, chunks: [], receivedBytes: 0, from: remoteId };
+            incomingRef.current[key] = {
+              name: msg.name,
+              size: msg.size,
+              chunks: [],
+              receivedBytes: 0,
+              from: remoteId,
+            };
           } else if (msg.type === "file-chunk") {
             const key = `${remoteId}:${msg.id}`;
             const entry = incomingRef.current[key];
@@ -494,7 +544,10 @@ const Index = () => {
             if (!entry) return;
             const blob = assembleBase64Chunks(entry.chunks);
             const url = URL.createObjectURL(blob);
-            setReceivedFiles((prev) => [...prev, { name: entry.name, size: entry.size, url }]);
+            setReceivedFiles((prev) => [
+              ...prev,
+              { name: entry.name, size: entry.size, url },
+            ]);
             delete incomingRef.current[key];
           }
         }
@@ -534,7 +587,10 @@ const Index = () => {
     const chunkSize = 16 * 1024;
     let offset = 0;
 
-    const waitForBuffer = async (dc: RTCDataChannel, maxBuffered = 8 * 1024 * 1024) => {
+    const waitForBuffer = async (
+      dc: RTCDataChannel,
+      maxBuffered = 8 * 1024 * 1024
+    ) => {
       if (dc.bufferedAmount < maxBuffered) return;
       return new Promise<void>((resolve) => {
         const handler = () => {
@@ -543,14 +599,25 @@ const Index = () => {
             resolve();
           }
         };
-        try { dc.bufferedAmountLowThreshold = Math.floor(maxBuffered / 2); } catch {}
+        try {
+          dc.bufferedAmountLowThreshold = Math.floor(maxBuffered / 2);
+        } catch (e) {
+          console.warn("Error setting buffered amount low threshold", e);
+        }
         dc.addEventListener("bufferedamountlow", handler);
       });
     };
 
     for (const dc of peers) {
       if (dc.readyState === "open") {
-        dc.send(JSON.stringify({ type: "file-meta", id, name: file.name, size: file.size }));
+        dc.send(
+          JSON.stringify({
+            type: "file-meta",
+            id,
+            name: file.name,
+            size: file.size,
+          })
+        );
       }
     }
 
@@ -561,7 +628,14 @@ const Index = () => {
       for (const dc of peers) {
         if (dc.readyState === "open") {
           await waitForBuffer(dc);
-          dc.send(JSON.stringify({ type: "file-chunk", id, data: b64, byteLength: slice.size }));
+          dc.send(
+            JSON.stringify({
+              type: "file-chunk",
+              id,
+              data: b64,
+              byteLength: slice.size,
+            })
+          );
         }
       }
       offset += slice.size;
@@ -600,8 +674,13 @@ const Index = () => {
         <RoomLobby
           username={username}
           onJoinRoom={handleJoinRoom}
+          onCreateRoom={handleCreateRoom}
           onLogout={handleLogout}
           rooms={rooms}
+          passwordError={passwordError}
+          onPasswordErrorClear={() => setPasswordError(null)}
+          pendingRoomJoin={pendingRoomJoin}
+          onPendingRoomJoin={setPendingRoomJoin}
         />
       )}
 

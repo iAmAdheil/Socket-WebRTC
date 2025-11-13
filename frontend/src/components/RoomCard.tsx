@@ -1,4 +1,4 @@
-import { Users, ArrowRight } from "lucide-react";
+import { Users, ArrowRight, Lock } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -14,16 +14,22 @@ interface RoomCardProps {
     id: string;
     username: string;
   }[];
+  hasPassword: boolean;
   onJoin: () => void;
 }
 
-const RoomCard = ({ roomName, activeUsers, onJoin }: RoomCardProps) => {
+const RoomCard = ({ roomName, activeUsers, hasPassword, onJoin }: RoomCardProps) => {
   return (
     <Card className="group hover:border-foreground/20 transition-colors">
       <CardHeader className="pb-3">
-        <CardTitle className="text-base font-medium truncate">
-          {roomName}
-        </CardTitle>
+        <div className="flex items-center justify-between gap-2">
+          <CardTitle className="text-base font-medium truncate">
+            {roomName}
+          </CardTitle>
+          {hasPassword && (
+            <Lock className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+          )}
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex items-center justify-between">

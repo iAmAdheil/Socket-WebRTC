@@ -1,8 +1,9 @@
-import { useState } from "react";
-import { Plus, LogOut, Video, User } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Plus, LogOut, Video, User, Lock } from "lucide-react";
 import { Room } from "@/pages/Index";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
@@ -11,24 +12,56 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import RoomCard from "./RoomCard";
 import ThemeToggle from "./ThemeToggle";
 
 interface RoomLobbyProps {
   username: string;
-  onJoinRoom: (roomName: string) => void;
+  onJoinRoom: (roomName: string, password?: string) => void;
+  onCreateRoom: (roomName: string, password?: string) => void;
   onLogout: () => void;
   rooms: Room[];
+  passwordError: string | null;
+  onPasswordErrorClear: () => void;
+  pendingRoomJoin: { roomName: string; password?: string } | null;
+  onPendingRoomJoin: (value: { roomName: string; password?: string } | null) => void;
 }
 
 const RoomLobby = ({
   username,
   onJoinRoom,
+  onCreateRoom,
   onLogout,
   rooms,
+  passwordError,
+  onPasswordErrorClear,
+  pendingRoomJoin,
+  onPendingRoomJoin,
 }: RoomLobbyProps) => {
   const [newRoomName, setNewRoomName] = useState("");
+  const [newRoomPassword, setNewRoomPassword] = useState("");
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [joinPassword, setJoinPassword] = useState("");
+  const [joinPasswordDialogOpen, setJoinPasswordDialogOpen] = useState(false);
+  const [roomToJoin, setRoomToJoin] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (passwordError) {
+      // Keep the password dialog open if there's an error
+      setJoinPasswordDialogOpen(true);
+      // Clear password input when error occurs so user can retry
+      // Actually, we'll keep it - user might want to just fix a typo
+    }
+  }, [passwordError]);
 
   const handleCreateRoom = (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,9 +71,42 @@ const RoomLobby = ({
       alert("Room already exists");
     } else {
       console.log("Creating room:", newRoomName);
-      onJoinRoom(roomName);
+      onCreateRoom(roomName, newRoomPassword.trim() || undefined);
       setNewRoomName("");
+      setNewRoomPassword("");
       setCreateDialogOpen(false);
+    }
+  };
+
+  const handleJoinClick = (roomName: string) => {
+    const room = rooms.find((r) => r.name === roomName);
+    if (room?.hasPassword) {
+      // Room has password, show password dialog
+      setRoomToJoin(roomName);
+      setJoinPassword("");
+      setJoinPasswordDialogOpen(true);
+      onPendingRoomJoin({ roomName });
+    } else {
+      // No password, join directly
+      onJoinRoom(roomName);
+    }
+  };
+
+  const handleJoinWithPassword = () => {
+    if (!roomToJoin) return;
+    // Clear previous error before attempting join
+    onPasswordErrorClear();
+    onJoinRoom(roomToJoin, joinPassword.trim() || undefined);
+    // Don't clear password here - keep it in case user wants to try again
+  };
+
+  const handlePasswordDialogClose = (open: boolean) => {
+    setJoinPasswordDialogOpen(open);
+    if (!open) {
+      setRoomToJoin(null);
+      setJoinPassword("");
+      onPasswordErrorClear();
+      onPendingRoomJoin(null);
     }
   };
 
@@ -48,7 +114,7 @@ const RoomLobby = ({
     <div className="w-full flex-1 min-h-screen bg-background">
       {/* Header */}
       <header className="border-b border-border bg-background sticky top-0 z-50">
-        <div className="container mx-auto px-6 lg:px-8">
+        <div className="container mx-auto px-3 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 bg-foreground rounded-lg flex items-center justify-center">
@@ -99,16 +165,30 @@ const RoomLobby = ({
               <DialogHeader>
                 <DialogTitle>Create Room</DialogTitle>
                 <DialogDescription>
-                  Enter a name for your new video chat room
+                  Enter a name for your new video chat room. Optionally add a password to protect it.
                 </DialogDescription>
               </DialogHeader>
               <form onSubmit={handleCreateRoom} className="space-y-4">
-                <Input
-                  placeholder="Room name"
-                  value={newRoomName}
-                  onChange={(e) => setNewRoomName(e.target.value)}
-                  autoFocus
-                />
+                <div className="space-y-2">
+                  <Label htmlFor="room-name">Room name</Label>
+                  <Input
+                    id="room-name"
+                    placeholder="Room name"
+                    value={newRoomName}
+                    onChange={(e) => setNewRoomName(e.target.value)}
+                    autoFocus
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="room-password">Password (optional)</Label>
+                  <Input
+                    id="room-password"
+                    type="password"
+                    placeholder="Leave empty for public room"
+                    value={newRoomPassword}
+                    onChange={(e) => setNewRoomPassword(e.target.value)}
+                  />
+                </div>
                 <Button
                   type="submit"
                   className="w-full"
@@ -129,7 +209,8 @@ const RoomLobby = ({
                 key={room.name}
                 roomName={room.name}
                 activeUsers={room.activeUsers}
-                onJoin={() => onJoinRoom(room.name)}
+                hasPassword={room.hasPassword}
+                onJoin={() => handleJoinClick(room.name)}
               />
             ))}
           </div>
@@ -149,6 +230,57 @@ const RoomLobby = ({
           </div>
         )}
       </main>
+
+      {/* Password Dialog for Joining Protected Rooms */}
+      <AlertDialog open={joinPasswordDialogOpen} onOpenChange={handlePasswordDialogClose}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Enter Room Password</AlertDialogTitle>
+            <AlertDialogDescription>
+              {roomToJoin ? (
+                <>
+                  The room <strong>{roomToJoin}</strong> is password protected. Please enter the password to join.
+                </>
+              ) : (
+                "This room is password protected. Please enter the password to join."
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-4 py-4">
+            {passwordError && (
+              <Alert variant="destructive">
+                <AlertDescription>{passwordError}</AlertDescription>
+              </Alert>
+            )}
+            <div className="space-y-2">
+              <Label htmlFor="join-password">Password</Label>
+              <Input
+                id="join-password"
+                type="password"
+                placeholder="Enter password"
+                value={joinPassword}
+                onChange={(e) => setJoinPassword(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    handleJoinWithPassword();
+                  }
+                }}
+                autoFocus
+              />
+            </div>
+          </div>
+          <AlertDialogFooter className="w-full flex flex-col gap-3">
+          <Button onClick={handleJoinWithPassword}>Join Room</Button>
+            <Button
+              variant="outline"
+              onClick={() => handlePasswordDialogClose(false)}
+            >
+              Cancel
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
